@@ -1,0 +1,17 @@
+{
+  "OKTA": {
+    "ticker": "OKTA",
+    "short_put_strike": 65.0,
+    "long_put_strike": 60.0,
+    "expiration_date": "2026-06-18",
+    "entry_credit": 1.95,
+    "current_price": 73.97,
+    "current_debit_to_close": 1.75,
+    "net_delta": 0.2,
+    "net_theta": 3.5,
+    "net_vega": -0.4,
+    "current_iv": 22.0,
+    "iv_at_entry": 25.0,
+    "notes": "e.g., broader market trend, support/resistance levels, earnings dates, etc."
+  }
+}
