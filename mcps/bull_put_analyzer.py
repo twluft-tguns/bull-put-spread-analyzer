@@ -157,12 +157,130 @@ def save_saved_trades(trades: dict) -> None:
         json.dump(trades, f, indent=2)
 
 
+def _looks_like_trade_payload(v: object) -> bool:
+    return isinstance(v, dict) and "ticker" in v and "short_put_strike" in v and "expiration_date" in v
+
+
+def has_supabase_config() -> bool:
+    try:
+        cfg = st.secrets.get("supabase", {})
+        return bool(cfg.get("url") and (cfg.get("service_role_key") or cfg.get("anon_key")))
+    except Exception:
+        return False
+
+
+@st.cache_resource
+def get_supabase_client():
+    from supabase import create_client
+
+    cfg = st.secrets["supabase"]
+    key = cfg.get("service_role_key") or cfg.get("anon_key")
+    return create_client(cfg["url"], key)
+
+
+def list_trades(owner_key: str) -> dict:
+    """
+    Returns {label: payload_dict} for this owner_key.
+    Uses Supabase if configured; otherwise falls back to local JSON.
+    """
+    if has_supabase_config():
+        sb = get_supabase_client()
+        resp = (
+            sb.table("trades")
+            .select("label,data")
+            .eq("owner_key", owner_key)
+            .order("updated_at", desc=True)
+            .execute()
+        )
+        rows = resp.data or []
+        return {r["label"]: r["data"] for r in rows}
+
+    all_trades = load_saved_trades()
+    # Back-compat: previously we stored {label: payload} (no workspace key)
+    if all_trades and all(_looks_like_trade_payload(v) for v in all_trades.values()):
+        return all_trades
+    return all_trades.get(owner_key, {})
+
+
+def upsert_trade(owner_key: str, label: str, payload: dict) -> None:
+    if has_supabase_config():
+        sb = get_supabase_client()
+        sb.table("trades").upsert(
+            {
+                "owner_key": owner_key,
+                "label": label,
+                "data": payload,
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            },
+            on_conflict="owner_key,label",
+        ).execute()
+        return
+
+    all_trades = load_saved_trades()
+    if all_trades and all(_looks_like_trade_payload(v) for v in all_trades.values()):
+        # Legacy local format
+        all_trades[label] = payload
+        save_saved_trades(all_trades)
+        return
+
+    all_trades.setdefault(owner_key, {})
+    all_trades[owner_key][label] = payload
+    save_saved_trades(all_trades)
+
+
+def delete_trade(owner_key: str, label: str) -> None:
+    if has_supabase_config():
+        sb = get_supabase_client()
+        sb.table("trades").delete().eq("owner_key", owner_key).eq("label", label).execute()
+        return
+
+    all_trades = load_saved_trades()
+    if all_trades and all(_looks_like_trade_payload(v) for v in all_trades.values()):
+        if label in all_trades:
+            del all_trades[label]
+            save_saved_trades(all_trades)
+        return
+
+    if owner_key in all_trades and label in all_trades[owner_key]:
+        del all_trades[owner_key][label]
+        save_saved_trades(all_trades)
+
+
+def ensure_workspace_key() -> str:
+    if "workspace_key" not in st.session_state or not str(st.session_state["workspace_key"]).strip():
+        import secrets
+
+        st.session_state["workspace_key"] = secrets.token_urlsafe(16)
+    return st.session_state["workspace_key"]
+
+
 def main():
     st.set_page_config(
         page_title="Bull Put Spread Analyzer – Optimal Exit Time",
         layout="wide",
         page_icon="📊",
     )
+
+    # Apply any pending loaded trade data BEFORE widgets are created
+    if "loaded_trade_data" in st.session_state:
+        data = st.session_state.pop("loaded_trade_data")
+        st.session_state["ticker"] = data["ticker"]
+        st.session_state["short_put_strike"] = data["short_put_strike"]
+        st.session_state["long_put_strike"] = data["long_put_strike"]
+        exp_val = data["expiration_date"]
+        if isinstance(exp_val, str):
+            st.session_state["expiration_date"] = datetime.date.fromisoformat(exp_val)
+        else:
+            st.session_state["expiration_date"] = exp_val
+        st.session_state["entry_credit"] = data["entry_credit"]
+        st.session_state["current_price"] = data["current_price"]
+        st.session_state["current_debit_to_close"] = data["current_debit_to_close"]
+        st.session_state["net_delta"] = data["net_delta"]
+        st.session_state["net_theta"] = data["net_theta"]
+        st.session_state["net_vega"] = data["net_vega"]
+        st.session_state["current_iv"] = data["current_iv"]
+        st.session_state["iv_at_entry"] = data["iv_at_entry"]
+        st.session_state["notes"] = data["notes"]
 
     # --- Sidebar: Inputs ---
     with st.sidebar:
@@ -171,6 +289,19 @@ def main():
             unsafe_allow_html=True,
         )
         st.caption("Analyze your bull put spread and get a clear exit recommendation.")
+
+        st.markdown("#### Trade Storage")
+        if has_supabase_config():
+            st.success("Cloud storage enabled (Supabase).")
+        else:
+            st.warning("Cloud storage not configured. Using local file storage.")
+
+        ensure_workspace_key()
+        workspace_key = st.text_input(
+            "Workspace Key (keep this private)",
+            key="workspace_key",
+            help="This key separates your saved trades from other users on the public app. Save it somewhere safe.",
+        )
 
         ticker = st.text_input("Underlying Ticker", value="SPY", key="ticker")
 
@@ -281,16 +412,20 @@ def main():
         st.markdown("---")
         st.markdown("#### Saved Trades")
 
-        saved_trades = load_saved_trades()
+        try:
+            saved_trades = list_trades(workspace_key)
+        except Exception as e:
+            saved_trades = {}
+            st.error(f"Could not load saved trades: {e}")
 
         trade_label = st.text_input("Trade Name / Label", key="trade_label")
 
-        col_save, col_load = st.columns([1, 1])
+        col_save, col_load, col_del = st.columns([1, 1, 1])
 
         with col_save:
             if st.button("💾 Save Trade"):
                 if trade_label.strip():
-                    saved_trades[trade_label.strip()] = {
+                    payload = {
                         "ticker": st.session_state["ticker"],
                         "short_put_strike": st.session_state["short_put_strike"],
                         "long_put_strike": st.session_state["long_put_strike"],
@@ -305,8 +440,12 @@ def main():
                         "iv_at_entry": st.session_state["iv_at_entry"],
                         "notes": st.session_state["notes"],
                     }
-                    save_saved_trades(saved_trades)
-                    st.success(f"Saved trade '{trade_label.strip()}'")
+                    try:
+                        upsert_trade(workspace_key, trade_label.strip(), payload)
+                        st.success(f"Saved trade '{trade_label.strip()}'")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Save failed: {e}")
 
         with col_load:
             trade_to_load = st.selectbox(
@@ -316,24 +455,20 @@ def main():
                 key="trade_to_load",
             )
 
+        with col_del:
+            if st.button("🗑️ Delete"):
+                if trade_to_load != "(none)":
+                    try:
+                        delete_trade(workspace_key, trade_to_load)
+                        st.success(f"Deleted '{trade_to_load}'")
+                        st.session_state["trade_to_load"] = "(none)"
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Delete failed: {e}")
+
         if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade"):
-            data = saved_trades[trade_to_load]
-            st.session_state["ticker"] = data["ticker"]
-            st.session_state["short_put_strike"] = data["short_put_strike"]
-            st.session_state["long_put_strike"] = data["long_put_strike"]
-            st.session_state["expiration_date"] = datetime.date.fromisoformat(
-                data["expiration_date"]
-            )
-            st.session_state["entry_credit"] = data["entry_credit"]
-            st.session_state["current_price"] = data["current_price"]
-            st.session_state["current_debit_to_close"] = data["current_debit_to_close"]
-            st.session_state["net_delta"] = data["net_delta"]
-            st.session_state["net_theta"] = data["net_theta"]
-            st.session_state["net_vega"] = data["net_vega"]
-            st.session_state["current_iv"] = data["current_iv"]
-            st.session_state["iv_at_entry"] = data["iv_at_entry"]
-            st.session_state["notes"] = data["notes"]
-            st.experimental_rerun()
+            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+            st.rerun()
 
     # --- Main Layout ---
     st.markdown(

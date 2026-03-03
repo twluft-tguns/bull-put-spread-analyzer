@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.Python
+env/
+venv/
+.venv/
+*.log
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Local saved trades fallback
+saved_trades.json
