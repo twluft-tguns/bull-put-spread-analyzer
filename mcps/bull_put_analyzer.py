@@ -1,3 +1,4 @@
+import base64
 import datetime
 from typing import List, Tuple
 import json
@@ -278,14 +279,16 @@ def build_schwab_auth_url() -> str:
 
 def exchange_code_for_token(code: str) -> None:
     cfg = st.secrets["schwab"]
+    # Schwab token endpoint expects client_id and client_secret via Basic auth, not in body
+    credentials = f"{cfg['client_id']}:{cfg['client_secret']}"
+    encoded = base64.b64encode(credentials.encode()).decode()
+    headers = {"Authorization": f"Basic {encoded}"}
     data = {
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": cfg["redirect_uri"],
-        "client_id": cfg["client_id"],
-        "client_secret": cfg["client_secret"],
     }
-    resp = requests.post(cfg["token_url"], data=data, timeout=15)
+    resp = requests.post(cfg["token_url"], data=data, headers=headers, timeout=15)
     if resp.status_code != 200:
         raise RuntimeError(f"Token request failed: {resp.status_code} {resp.text}")
     token_data = resp.json()
