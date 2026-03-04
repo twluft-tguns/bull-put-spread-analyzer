@@ -565,15 +565,15 @@ def main():
             st.session_state["expiration_date"] = datetime.date.fromisoformat(exp_val)
         else:
             st.session_state["expiration_date"] = exp_val
-        st.session_state["entry_credit"] = data["entry_credit"]
-        st.session_state["current_price"] = data.get("current_price", 0.0)
-        st.session_state["current_debit_to_close"] = data.get("current_debit_to_close", 0.0)
-        st.session_state["net_delta"] = data.get("net_delta", 0.0)
-        st.session_state["net_theta"] = data.get("net_theta", 0.0)
-        st.session_state["net_vega"] = data.get("net_vega", 0.0)
-        st.session_state["current_iv"] = data.get("current_iv", 0.0)
-        st.session_state["iv_at_entry"] = data.get("iv_at_entry", 0.0)
-        st.session_state["notes"] = data.get("notes", "")
+        st.session_state["entry_credit"] = float(data.get("entry_credit") or 0.0)
+        st.session_state["current_price"] = float(data.get("current_price") or 0.0)
+        st.session_state["current_debit_to_close"] = float(data.get("current_debit_to_close") or 0.0)
+        st.session_state["net_delta"] = float(data.get("net_delta") or 0.0)
+        st.session_state["net_theta"] = float(data.get("net_theta") or 0.0)
+        st.session_state["net_vega"] = float(data.get("net_vega") or 0.0)
+        st.session_state["current_iv"] = float(data.get("current_iv") or 0.0)
+        st.session_state["iv_at_entry"] = float(data.get("iv_at_entry") or 0.0)
+        st.session_state["notes"] = data.get("notes") or ""
 
     # --- Sidebar: Inputs ---
     with st.sidebar:
@@ -704,7 +704,7 @@ def main():
         st.markdown("---")
         st.markdown("#### 📝 Manual entry")
         st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by Fetch Live Data.")
-        ticker = st.text_input("Underlying Ticker", value="SPY", key="ticker")
+        ticker = st.text_input("Underlying Ticker", value=st.session_state.get("ticker", "SPY"), key="ticker")
 
         col_strikes = st.columns(2)
         with col_strikes[0]:
@@ -734,7 +734,7 @@ def main():
         entry_credit = st.number_input(
             "Entry Credit Received (per spread)",
             min_value=0.0,
-            value=2.00,
+            value=st.session_state.get("entry_credit", 2.00),
             step=0.05,
             format="%.2f",
             key="entry_credit",
@@ -744,7 +744,7 @@ def main():
             "IV at Entry (%)",
             min_value=0.0,
             max_value=200.0,
-            value=25.0,
+            value=st.session_state.get("iv_at_entry", 25.0),
             step=0.5,
             format="%.2f",
             key="iv_at_entry",
@@ -752,7 +752,7 @@ def main():
 
         notes = st.text_area(
             "Notes / Context",
-            value="e.g., broader market trend, support/resistance levels, earnings dates, etc.",
+            value=st.session_state.get("notes", "e.g., broader market trend, support/resistance levels, earnings dates, etc."),
             height=120,
             key="notes",
         )
@@ -763,7 +763,7 @@ def main():
         current_price = st.number_input(
             "Current Underlying Price",
             min_value=0.0,
-            value=440.0,
+            value=st.session_state.get("current_price", 440.0),
             step=0.5,
             format="%.2f",
             key="current_price",
@@ -772,7 +772,7 @@ def main():
         current_debit_to_close = st.number_input(
             "Current Debit to Close (per spread)",
             min_value=0.0,
-            value=0.40,
+            value=st.session_state.get("current_debit_to_close", 0.40),
             step=0.05,
             format="%.2f",
             key="current_debit_to_close",
@@ -782,7 +782,7 @@ def main():
             "Net Delta",
             min_value=-2.0,
             max_value=2.0,
-            value=0.20,
+            value=st.session_state.get("net_delta", 0.20),
             step=0.01,
             format="%.2f",
             key="net_delta",
@@ -792,7 +792,7 @@ def main():
             "Net Theta (daily, $ per spread)",
             min_value=-20.0,
             max_value=20.0,
-            value=3.50,
+            value=st.session_state.get("net_theta", 3.50),
             step=0.10,
             format="%.2f",
             key="net_theta",
@@ -802,7 +802,7 @@ def main():
             "Net Vega",
             min_value=-10.0,
             max_value=10.0,
-            value=-0.40,
+            value=st.session_state.get("net_vega", -0.40),
             step=0.05,
             format="%.2f",
             key="net_vega",
@@ -812,7 +812,7 @@ def main():
             "Current IV (%)",
             min_value=0.0,
             max_value=200.0,
-            value=22.0,
+            value=st.session_state.get("current_iv", 22.0),
             step=0.5,
             format="%.2f",
             key="current_iv",
