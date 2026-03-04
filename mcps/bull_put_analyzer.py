@@ -519,6 +519,9 @@ def main():
             help="This key separates your saved trades from other users on the public app. Save it somewhere safe.",
         )
 
+        st.markdown("---")
+        st.markdown("#### 📝 Manual entry")
+        st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by Fetch Live Data.")
         ticker = st.text_input("Underlying Ticker", value="SPY", key="ticker")
 
         col_strikes = st.columns(2)
@@ -545,6 +548,26 @@ def main():
             key="entry_credit",
         )
 
+        iv_at_entry = st.number_input(
+            "IV at Entry (%)",
+            min_value=0.0,
+            max_value=200.0,
+            value=25.0,
+            step=0.5,
+            format="%.2f",
+            key="iv_at_entry",
+        )
+
+        notes = st.text_area(
+            "Notes / Context",
+            value="e.g., broader market trend, support/resistance levels, earnings dates, etc.",
+            height=120,
+            key="notes",
+        )
+
+        st.markdown("---")
+        st.markdown("#### 📡 Live / current data")
+        st.caption("Filled by **Fetch Live Data** when connected to Schwab, or enter manually.")
         current_price = st.number_input(
             "Current Underlying Price",
             min_value=0.0,
@@ -562,8 +585,6 @@ def main():
             format="%.2f",
             key="current_debit_to_close",
         )
-
-        st.markdown("---")
 
         net_delta = st.number_input(
             "Net Delta",
@@ -595,8 +616,6 @@ def main():
             key="net_vega",
         )
 
-        st.markdown("---")
-
         current_iv = st.number_input(
             "Current IV (%)",
             min_value=0.0,
@@ -605,23 +624,6 @@ def main():
             step=0.5,
             format="%.2f",
             key="current_iv",
-        )
-
-        iv_at_entry = st.number_input(
-            "IV at Entry (%)",
-            min_value=0.0,
-            max_value=200.0,
-            value=25.0,
-            step=0.5,
-            format="%.2f",
-            key="iv_at_entry",
-        )
-
-        notes = st.text_area(
-            "Notes / Context",
-            value="e.g., broader market trend, support/resistance levels, earnings dates, etc.",
-            height=120,
-            key="notes",
         )
 
         # --- Saved trades controls ---
