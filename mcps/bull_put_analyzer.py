@@ -251,7 +251,8 @@ def delete_trade(owner_key: str, label: str) -> None:
 
 
 def ensure_workspace_key() -> str:
-    # Persist workspace key in URL so it survives reruns (e.g. after Fetch Live Data) and worker changes on Streamlit Cloud.
+    # Persist workspace key in URL so it survives reruns and worker changes.
+    # Prefer existing session_state (e.g. user just typed "Tguns") over URL so we don't overwrite their input.
     import secrets
 
     try:
@@ -265,18 +266,18 @@ def ensure_workspace_key() -> str:
     if isinstance(url_key, list):
         url_key = (url_key[0] or "").strip() if url_key else ""
 
+    # Use session_state first so a user-entered key (e.g. "Tguns") is not overwritten by URL
+    current = (st.session_state.get("workspace_key") or "").strip()
+    if current:
+        try:
+            st.query_params["workspace_key"] = current
+        except Exception:
+            pass
+        return current
+
     if url_key:
         st.session_state["workspace_key"] = url_key
         return url_key
-
-    if st.session_state.get("workspace_key"):
-        current = str(st.session_state["workspace_key"]).strip()
-        if current:
-            try:
-                st.query_params["workspace_key"] = current
-            except Exception:
-                pass
-            return current
 
     new_key = secrets.token_urlsafe(16)
     st.session_state["workspace_key"] = new_key
