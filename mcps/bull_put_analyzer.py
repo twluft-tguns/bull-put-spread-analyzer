@@ -250,7 +250,9 @@ def delete_trade(owner_key: str, label: str) -> None:
 
 
 def ensure_workspace_key() -> str:
-    if "workspace_key" not in st.session_state or not str(st.session_state["workspace_key"]).strip():
+    # Only set a new key when the key has never been set (first visit).
+    # Do not replace when empty, so reruns (e.g. after Fetch Live Data) don't change the key.
+    if "workspace_key" not in st.session_state:
         import secrets
 
         st.session_state["workspace_key"] = secrets.token_urlsafe(16)
