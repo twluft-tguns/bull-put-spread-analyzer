@@ -619,7 +619,9 @@ def main():
 
         default_expiration = datetime.date.today() + datetime.timedelta(days=30)
         expiration_date = st.date_input(
-            "Expiration Date", value=default_expiration, key="expiration_date"
+            "Expiration Date",
+            value=st.session_state.get("expiration_date", default_expiration),
+            key="expiration_date",
         )
 
         entry_credit = st.number_input(
