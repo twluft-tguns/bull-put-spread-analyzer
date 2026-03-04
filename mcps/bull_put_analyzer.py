@@ -577,10 +577,10 @@ def main():
 
     # --- Sidebar: Inputs ---
     with st.sidebar:
-        # Green border on entry fields when focused or filled (instead of default red/blue outline)
+        # Inner border turns green when field has focus or valid input (no outer band)
         st.markdown("""
         <style>
-        /* Green outline when focusing any sidebar entry field; surrounding box turns green */
+        /* Only the input's own border (inner red band) turns green on focus; no outer box */
         [data-testid="stSidebar"] [data-testid="stTextInput"] input:focus,
         [data-testid="stSidebar"] [data-testid="stTextinput"] input:focus,
         [data-testid="stSidebar"] [data-testid="stNumberInput"] input:focus,
@@ -588,21 +588,19 @@ def main():
         [data-testid="stSidebar"] div[data-testid="stDateInput"] input:focus,
         [data-testid="stSidebar"] div[data-testid="stDateinput"] input:focus,
         [data-testid="stSidebar"] textarea:focus {
-            outline: 2px solid #16a34a !important;
-            outline-offset: 0 !important;
+            outline: none !important;
             border-color: #16a34a !important;
-            box-shadow: 0 0 0 1px #16a34a !important;
+            box-shadow: none !important;
         }
-        [data-testid="stSidebar"] [data-testid="stTextInput"]:focus-within,
-        [data-testid="stSidebar"] [data-testid="stTextinput"]:focus-within,
-        [data-testid="stSidebar"] [data-testid="stNumberInput"]:focus-within,
-        [data-testid="stSidebar"] [data-testid="stNumberinput"]:focus-within,
-        [data-testid="stSidebar"] div[data-testid="stDateInput"]:focus-within,
-        [data-testid="stSidebar"] div[data-testid="stDateinput"]:focus-within,
-        [data-testid="stSidebar"] [data-testid="stTextArea"]:focus-within,
-        [data-testid="stSidebar"] [data-testid="stTextarea"]:focus-within {
-            box-shadow: 0 0 0 2px #16a34a !important;
-            border-radius: 0.25rem;
+        /* Keep inner border green when field has valid content (e.g. after Enter) */
+        [data-testid="stSidebar"] [data-testid="stTextInput"] input:valid:not(:placeholder-shown),
+        [data-testid="stSidebar"] [data-testid="stTextinput"] input:valid:not(:placeholder-shown),
+        [data-testid="stSidebar"] textarea:valid:not(:placeholder-shown) {
+            border-color: #16a34a !important;
+        }
+        [data-testid="stSidebar"] div[data-testid="stDateInput"] input:valid:not([value=""]),
+        [data-testid="stSidebar"] div[data-testid="stDateinput"] input:valid:not([value=""]) {
+            border-color: #16a34a !important;
         }
         </style>
         """, unsafe_allow_html=True)
