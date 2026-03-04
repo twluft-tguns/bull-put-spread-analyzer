@@ -382,23 +382,37 @@ def fetch_schwab_live_data(
     strikes_map = put_map[exp_key]
 
     def get_contract(strike: float):
-        # Strike can be "430.0" or "430"
-        for skey, contracts in strikes_map.items():
+        # Strike can be "430.0", "430", or 430; value can be single contract or list of one
+        for skey, val in strikes_map.items():
             try:
                 if abs(float(skey) - strike) < 0.01:
-                    if contracts and isinstance(contracts, list):
-                        return contracts[0]
-                    return contracts
+                    if isinstance(val, list) and val:
+                        return val[0]
+                    if isinstance(val, dict) and not any(k in val for k in ("putCall", "symbol", "bidPrice", "bid")) and val:
+                        # One more nesting level: strike -> { innerKey: contract }
+                        for inner in val.values():
+                            if isinstance(inner, dict) and (inner.get("putCall") or inner.get("bidPrice") is not None or inner.get("bid") is not None):
+                                return inner
+                            if isinstance(inner, list) and inner:
+                                return inner[0]
+                            break
+                    return val
             except (TypeError, ValueError):
                 continue
         return None
 
     short_c = get_contract(short_put_strike)
     long_c = get_contract(long_put_strike)
-    if not short_c:
+    if not short_c or not isinstance(short_c, dict):
         raise RuntimeError(f"Short put strike {short_put_strike} not found in chain.")
-    if not long_c:
+    if not long_c or not isinstance(long_c, dict):
         raise RuntimeError(f"Long put strike {long_put_strike} not found in chain.")
+
+    # QuoteOption may be the contract itself or nested under "quote"
+    def quote(c):
+        if isinstance(c, dict) and isinstance(c.get("quote"), dict):
+            return c["quote"]
+        return c
 
     def f(obj, key, default=0.0):
         v = obj.get(key) if isinstance(obj, dict) else getattr(obj, key, default)
@@ -407,36 +421,56 @@ def fetch_schwab_live_data(
         except (TypeError, ValueError):
             return default
 
-    # Option contract uses bidPrice/askPrice (per Schwab schema)
-    short_bid = f(short_c, "bidPrice")
-    short_ask = f(short_c, "askPrice")
-    long_bid = f(long_c, "bidPrice")
-    long_ask = f(long_c, "askPrice")
-    debit_to_close = max((short_ask - long_bid), 0.0)
+    # QuoteOption schema: bidPrice, askPrice, mark, lastPrice, closePrice, delta, theta, vega, volatility
+    def get_price(c, ask_not_bid):
+        q = quote(c)
+        if ask_not_bid:
+            return f(q, "askPrice") or f(q, "mark") or f(q, "lastPrice") or f(q, "closePrice")
+        return f(q, "bidPrice") or f(q, "mark") or f(q, "lastPrice") or f(q, "closePrice")
 
-    # Greeks: per-contract from API; net for spread = (-short + long) * 100
-    short_delta = f(short_c, "delta")
-    short_theta = f(short_c, "theta")
-    short_vega = f(short_c, "vega")
-    long_delta = f(long_c, "delta")
-    long_theta = f(long_c, "theta")
-    long_vega = f(long_c, "vega")
+    short_bid = get_price(short_c, False)
+    short_ask = get_price(short_c, True)
+    long_bid = get_price(long_c, False)
+    long_ask = get_price(long_c, True)
+    debit_to_close = max((short_ask - long_bid), 0.0)
+    if debit_to_close == 0:
+        short_mid = f(quote(short_c), "mark") or f(quote(short_c), "lastPrice") or f(quote(short_c), "closePrice") or ((short_bid + short_ask) / 2 if (short_bid or short_ask) else 0)
+        long_mid = f(quote(long_c), "mark") or f(quote(long_c), "lastPrice") or f(quote(long_c), "closePrice") or ((long_bid + long_ask) / 2 if (long_bid or long_ask) else 0)
+        debit_to_close = max(short_mid - long_mid, 0.0)
+
+    # Greeks and IV from QuoteOption: delta, theta, vega, volatility (top-level or in quote)
+    def greek(c, name):
+        q = quote(c)
+        return f(q, name) or 0.0
+
+    short_delta = greek(short_c, "delta")
+    short_theta = greek(short_c, "theta")
+    short_vega = greek(short_c, "vega")
+    long_delta = greek(long_c, "delta")
+    long_theta = greek(long_c, "theta")
+    long_vega = greek(long_c, "vega")
     net_delta = (-short_delta + long_delta) * 100
     net_theta = (-short_theta + long_theta) * 100
     net_vega = (-short_vega + long_vega) * 100
 
-    # IV: volatility is often decimal (0.22 = 22%)
-    short_iv = f(short_c, "volatility", 0.0)
+    # IV: QuoteOption.volatility (often decimal 0.22 = 22%)
+    short_iv = greek(short_c, "volatility")
     if 0 < short_iv < 2:
         current_iv = short_iv * 100
     else:
         current_iv = short_iv
 
-    # Underlying price: doc shows "underlying" has last, mark, bid, ask, close directly
+    # Underlying: chain may have data.underlyingPrice or data.underlying with quote fields
     underlying = data.get("underlying") or {}
-    current_price = f(underlying, "last") or f(underlying, "mark") or f(underlying, "close") or f(underlying, "ask") or 0.0
-    if current_price <= 0 and data.get("underlyingPrice"):
-        current_price = float(data["underlyingPrice"])
+    q = quote(underlying) if isinstance(underlying, dict) else underlying
+    current_price = (
+        f(q, "lastPrice") or f(q, "mark") or f(q, "closePrice") or f(q, "askPrice") or 0.0
+    )
+    if current_price <= 0 and data.get("underlyingPrice") is not None:
+        try:
+            current_price = float(data["underlyingPrice"])
+        except (TypeError, ValueError):
+            pass
 
     return {
         "current_price": round(current_price, 2),
@@ -526,6 +560,12 @@ def main():
                         st.session_state["net_vega"] = live["net_vega"]
                         st.session_state["current_iv"] = live["current_iv"]
                         st.success("Live data loaded.")
+                        if live["current_debit_to_close"] == 0 or (
+                            live["net_delta"] == 0 and live["net_theta"] == 0 and live["net_vega"] == 0
+                        ):
+                            st.warning(
+                                "Debit to close or greeks are zero. Data may be delayed or the API may use different field names."
+                            )
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
