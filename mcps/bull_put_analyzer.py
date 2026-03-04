@@ -250,9 +250,41 @@ def delete_trade(owner_key: str, label: str) -> None:
         save_saved_trades(all_trades)
 
 
-def ensure_workspace_key() -> str:
+def list_workspace_keys() -> list:
+    """
+    Return workspace keys (owner_key) to show in dropdown, most recent first when possible.
+    Supabase: distinct owner_key ordered by latest updated_at. Local: sorted keys.
+    """
+    if has_supabase_config():
+        try:
+            sb = get_supabase_client()
+            resp = (
+                sb.table("trades")
+                .select("owner_key,updated_at")
+                .order("updated_at", desc=True)
+                .execute()
+            )
+            seen = set()
+            keys = []
+            for r in (resp.data or []):
+                k = (r.get("owner_key") or "").strip()
+                if k and k not in seen:
+                    seen.add(k)
+                    keys.append(k)
+            return keys
+        except Exception:
+            pass
+    all_trades = load_saved_trades()
+    if not all_trades:
+        return []
+    if all_trades and all(_looks_like_trade_payload(v) for v in all_trades.values()):
+        return []
+    return sorted(all_trades.keys())
+
+
+def ensure_workspace_key(known_keys: list | None = None) -> str:
     # Persist workspace key in URL so it survives reruns and worker changes.
-    # Prefer existing session_state (e.g. user just typed "Tguns") over URL so we don't overwrite their input.
+    # Prefer existing session_state over URL. When nothing set, default to first known key.
     import secrets
 
     try:
@@ -266,7 +298,6 @@ def ensure_workspace_key() -> str:
     if isinstance(url_key, list):
         url_key = (url_key[0] or "").strip() if url_key else ""
 
-    # Use session_state first so a user-entered key (e.g. "Tguns") is not overwritten by URL
     current = (st.session_state.get("workspace_key") or "").strip()
     if current:
         try:
@@ -278,6 +309,16 @@ def ensure_workspace_key() -> str:
     if url_key:
         st.session_state["workspace_key"] = url_key
         return url_key
+
+    # No key in session or URL: default to first workspace key in list (e.g. most recent)
+    keys = known_keys if known_keys is not None else list_workspace_keys()
+    if keys:
+        st.session_state["workspace_key"] = keys[0]
+        try:
+            st.query_params["workspace_key"] = keys[0]
+        except Exception:
+            pass
+        return keys[0]
 
     new_key = secrets.token_urlsafe(16)
     st.session_state["workspace_key"] = new_key
@@ -612,12 +653,42 @@ def main():
         else:
             st.warning("Cloud storage not configured. Using local file storage.")
 
-        ensure_workspace_key()
-        workspace_key = st.text_input(
-            "Workspace Key (keep this private)",
-            key="workspace_key",
-            help="This key separates your saved trades from other users on the public app. Save it somewhere safe.",
-        )
+        known_keys = list_workspace_keys()
+        ensure_workspace_key(known_keys)
+
+        if known_keys:
+            options = known_keys + ["(Add new...)"]
+            current_key = (st.session_state.get("workspace_key") or "").strip()
+            try:
+                default_index = options.index(current_key) if current_key in options else 0
+            except ValueError:
+                default_index = 0
+            sel = st.selectbox(
+                "Workspace Key (keep this private)",
+                options=options,
+                index=default_index,
+                key="workspace_key_select",
+                help="Select a workspace or add a new one. Your saved trades are grouped by workspace.",
+            )
+            if sel == "(Add new...)":
+                new_key = st.text_input(
+                    "New workspace key",
+                    value="",
+                    key="workspace_key_new",
+                    placeholder="Type a new key and save a trade to add it to the list",
+                )
+                workspace_key = (new_key or "").strip() or known_keys[0]
+            else:
+                workspace_key = sel
+            st.session_state["workspace_key"] = workspace_key
+        else:
+            workspace_key = st.text_input(
+                "Workspace Key (keep this private)",
+                value=st.session_state.get("workspace_key", ""),
+                key="workspace_key",
+                help="This key separates your saved trades from other users. Save a trade to create your first workspace.",
+            )
+
         # Keep URL in sync so the key survives reruns (e.g. after Fetch Live Data).
         if workspace_key:
             try:
@@ -787,10 +858,18 @@ def main():
                         st.error(f"Save failed: {e}")
 
         with col_load:
+            # Order: most recent first (Supabase order preserved); default to first trade on load
+            load_options = ["(none)"] + list(saved_trades.keys())
+            if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
+                default_load_index = load_options.index(st.session_state["trade_to_load"])
+            elif saved_trades:
+                default_load_index = 1  # first trade
+            else:
+                default_load_index = 0
             trade_to_load = st.selectbox(
                 "Load Trade",
-                options=["(none)"] + sorted(saved_trades.keys()),
-                index=0,
+                options=load_options,
+                index=default_load_index,
                 key="trade_to_load",
             )
 
