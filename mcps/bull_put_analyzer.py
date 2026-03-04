@@ -577,6 +577,36 @@ def main():
 
     # --- Sidebar: Inputs ---
     with st.sidebar:
+        # Green border on entry fields when focused or filled (instead of default red/blue outline)
+        st.markdown("""
+        <style>
+        /* Green outline when focusing any sidebar entry field; surrounding box turns green */
+        [data-testid="stSidebar"] [data-testid="stTextInput"] input:focus,
+        [data-testid="stSidebar"] [data-testid="stTextinput"] input:focus,
+        [data-testid="stSidebar"] [data-testid="stNumberInput"] input:focus,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"] input:focus,
+        [data-testid="stSidebar"] div[data-testid="stDateInput"] input:focus,
+        [data-testid="stSidebar"] div[data-testid="stDateinput"] input:focus,
+        [data-testid="stSidebar"] textarea:focus {
+            outline: 2px solid #16a34a !important;
+            outline-offset: 0 !important;
+            border-color: #16a34a !important;
+            box-shadow: 0 0 0 1px #16a34a !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stTextInput"]:focus-within,
+        [data-testid="stSidebar"] [data-testid="stTextinput"]:focus-within,
+        [data-testid="stSidebar"] [data-testid="stNumberInput"]:focus-within,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"]:focus-within,
+        [data-testid="stSidebar"] div[data-testid="stDateInput"]:focus-within,
+        [data-testid="stSidebar"] div[data-testid="stDateinput"]:focus-within,
+        [data-testid="stSidebar"] [data-testid="stTextArea"]:focus-within,
+        [data-testid="stSidebar"] [data-testid="stTextarea"]:focus-within {
+            box-shadow: 0 0 0 2px #16a34a !important;
+            border-radius: 0.25rem;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
         st.markdown(
             "<h2 style='margin-bottom: 0.5rem;'>Bull Put Spread Inputs</h2>",
             unsafe_allow_html=True,
