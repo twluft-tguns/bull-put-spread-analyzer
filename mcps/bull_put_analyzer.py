@@ -566,14 +566,14 @@ def main():
         else:
             st.session_state["expiration_date"] = exp_val
         st.session_state["entry_credit"] = data["entry_credit"]
-        st.session_state["current_price"] = data["current_price"]
-        st.session_state["current_debit_to_close"] = data["current_debit_to_close"]
-        st.session_state["net_delta"] = data["net_delta"]
-        st.session_state["net_theta"] = data["net_theta"]
-        st.session_state["net_vega"] = data["net_vega"]
-        st.session_state["current_iv"] = data["current_iv"]
-        st.session_state["iv_at_entry"] = data["iv_at_entry"]
-        st.session_state["notes"] = data["notes"]
+        st.session_state["current_price"] = data.get("current_price", 0.0)
+        st.session_state["current_debit_to_close"] = data.get("current_debit_to_close", 0.0)
+        st.session_state["net_delta"] = data.get("net_delta", 0.0)
+        st.session_state["net_theta"] = data.get("net_theta", 0.0)
+        st.session_state["net_vega"] = data.get("net_vega", 0.0)
+        st.session_state["current_iv"] = data.get("current_iv", 0.0)
+        st.session_state["iv_at_entry"] = data.get("iv_at_entry", 0.0)
+        st.session_state["notes"] = data.get("notes", "")
 
     # --- Sidebar: Inputs ---
     with st.sidebar:
