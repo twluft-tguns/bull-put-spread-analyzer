@@ -293,6 +293,125 @@ def exchange_code_for_token(code: str) -> None:
         raise RuntimeError(f"Token request failed: {resp.status_code} {resp.text}")
     token_data = resp.json()
     st.session_state["schwab_token"] = token_data
+    st.session_state.pop("schwab_auth_error", None)
+
+
+def get_schwab_access_token() -> str:
+    """Return current access_token; refresh if expired."""
+    if "schwab_token" not in st.session_state:
+        raise RuntimeError("Not connected to Schwab. Click 'Connect to Schwab' first.")
+    token = st.session_state["schwab_token"]
+    access = token.get("access_token")
+    if not access:
+        raise RuntimeError("Schwab token missing access_token. Reconnect to Schwab.")
+    # Optional: check expires_in and refresh using refresh_token if needed
+    return access
+
+
+def fetch_schwab_live_data(
+    ticker: str,
+    expiration_date: datetime.date,
+    short_put_strike: float,
+    long_put_strike: float,
+) -> dict:
+    """
+    Call Schwab marketdata chains API and return dict with:
+    current_price, current_debit_to_close, net_delta, net_theta, net_vega, current_iv
+    """
+    access_token = get_schwab_access_token()
+    base = "https://api.schwabapi.com/marketdata/v1/chains"
+    exp_str = expiration_date.strftime("%Y-%m-%d")
+    params = {
+        "symbol": ticker.upper(),
+        "contractType": "PUT",
+        "fromDate": exp_str,
+        "toDate": exp_str,
+        "includeUnderlyingQuote": "true",
+        "strikeCount": "20",
+    }
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.get(base, params=params, headers=headers, timeout=30)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Chains request failed: {resp.status_code} {resp.text[:500]}")
+    data = resp.json()
+
+    # Parse: putExpDateMap -> { "expDate:period" : { "strike" : [ contract ] } }
+    put_map = data.get("putExpDateMap") or {}
+    # Find expiration key that matches our date (key often "YYYY-MM-DD:1")
+    exp_key = None
+    for k in put_map:
+        if k.startswith(exp_str):
+            exp_key = k
+            break
+    if not exp_key:
+        raise RuntimeError(f"No put chain found for expiration {exp_str}. Check ticker and date.")
+    strikes_map = put_map[exp_key]
+
+    def get_contract(strike: float):
+        # Strike can be "430.0" or "430"
+        for skey, contracts in strikes_map.items():
+            try:
+                if abs(float(skey) - strike) < 0.01:
+                    if contracts and isinstance(contracts, list):
+                        return contracts[0]
+                    return contracts
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    short_c = get_contract(short_put_strike)
+    long_c = get_contract(long_put_strike)
+    if not short_c:
+        raise RuntimeError(f"Short put strike {short_put_strike} not found in chain.")
+    if not long_c:
+        raise RuntimeError(f"Long put strike {long_put_strike} not found in chain.")
+
+    def f(obj, key, default=0.0):
+        v = obj.get(key) if isinstance(obj, dict) else getattr(obj, key, default)
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
+    short_bid = f(short_c, "bid")
+    short_ask = f(short_c, "ask")
+    long_bid = f(long_c, "bid")
+    long_ask = f(long_c, "ask")
+    debit_to_close = max((short_ask - long_bid), 0.0)
+
+    # Greeks: per-contract from API; net for spread = (-short + long) * 100
+    short_delta = f(short_c, "delta")
+    short_theta = f(short_c, "theta")
+    short_vega = f(short_c, "vega")
+    long_delta = f(long_c, "delta")
+    long_theta = f(long_c, "theta")
+    long_vega = f(long_c, "vega")
+    net_delta = (-short_delta + long_delta) * 100
+    net_theta = (-short_theta + long_theta) * 100
+    net_vega = (-short_vega + long_vega) * 100
+
+    # IV: volatility is often decimal (0.22 = 22%)
+    short_iv = f(short_c, "volatility", 0.0)
+    if 0 < short_iv < 2:
+        current_iv = short_iv * 100
+    else:
+        current_iv = short_iv
+
+    # Underlying price from chain or quote
+    underlying = data.get("underlying") or {}
+    quote = underlying.get("quote") or underlying
+    current_price = f(quote, "last") or f(quote, "close") or f(quote, "ask") or 0.0
+    if current_price <= 0 and data.get("underlyingPrice"):
+        current_price = float(data["underlyingPrice"])
+
+    return {
+        "current_price": round(current_price, 2),
+        "current_debit_to_close": round(debit_to_close, 2),
+        "net_delta": round(net_delta, 2),
+        "net_theta": round(net_theta, 2),
+        "net_vega": round(net_vega, 2),
+        "current_iv": round(current_iv, 2),
+    }
 
 
 def main():
@@ -358,6 +477,24 @@ def main():
                 if st.button("Disconnect Schwab"):
                     st.session_state.pop("schwab_token", None)
                     st.rerun()
+                if st.button("📡 Fetch Live Data"):
+                    try:
+                        live = fetch_schwab_live_data(
+                            st.session_state["ticker"],
+                            st.session_state["expiration_date"],
+                            st.session_state["short_put_strike"],
+                            st.session_state["long_put_strike"],
+                        )
+                        st.session_state["current_price"] = live["current_price"]
+                        st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
+                        st.session_state["net_delta"] = live["net_delta"]
+                        st.session_state["net_theta"] = live["net_theta"]
+                        st.session_state["net_vega"] = live["net_vega"]
+                        st.session_state["current_iv"] = live["current_iv"]
+                        st.success("Live data loaded.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
             else:
                 auth_url = build_schwab_auth_url()
                 st.markdown(
