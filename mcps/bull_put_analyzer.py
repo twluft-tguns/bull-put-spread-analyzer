@@ -835,20 +835,21 @@ def main():
         with col_save:
             if st.button("💾 Save Trade"):
                 if trade_label.strip():
+                    # Use widget return values so we save exactly what is displayed (avoids session_state timing)
                     payload = {
-                        "ticker": st.session_state["ticker"],
-                        "short_put_strike": st.session_state["short_put_strike"],
-                        "long_put_strike": st.session_state["long_put_strike"],
-                        "expiration_date": str(st.session_state["expiration_date"]),
-                        "entry_credit": st.session_state["entry_credit"],
-                        "current_price": st.session_state["current_price"],
-                        "current_debit_to_close": st.session_state["current_debit_to_close"],
-                        "net_delta": st.session_state["net_delta"],
-                        "net_theta": st.session_state["net_theta"],
-                        "net_vega": st.session_state["net_vega"],
-                        "current_iv": st.session_state["current_iv"],
-                        "iv_at_entry": st.session_state["iv_at_entry"],
-                        "notes": st.session_state["notes"],
+                        "ticker": ticker,
+                        "short_put_strike": short_put_strike,
+                        "long_put_strike": long_put_strike,
+                        "expiration_date": str(expiration_date),
+                        "entry_credit": entry_credit,
+                        "current_price": current_price,
+                        "current_debit_to_close": current_debit_to_close,
+                        "net_delta": net_delta,
+                        "net_theta": net_theta,
+                        "net_vega": net_vega,
+                        "current_iv": current_iv,
+                        "iv_at_entry": iv_at_entry,
+                        "notes": notes,
                     }
                     try:
                         upsert_trade(workspace_key, trade_label.strip(), payload)
