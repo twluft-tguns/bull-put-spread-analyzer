@@ -1,5 +1,6 @@
 import base64
 import datetime
+import time
 import uuid
 from typing import List, Tuple
 import json
@@ -10,6 +11,8 @@ import requests
 import streamlit as st
 
 TRADES_FILE = Path("saved_trades.json")
+# Persist Schwab OAuth token so user stays logged in across refreshes
+SCHWAB_TOKEN_FILE = Path("schwab_token.json")
 
 
 def compute_dte(expiration: datetime.date) -> int:
@@ -337,6 +340,31 @@ def has_schwab_config() -> bool:
         return False
 
 
+def has_telegram_config() -> bool:
+    try:
+        cfg = st.secrets.get("telegram", {})
+        return bool(cfg.get("bot_token") and cfg.get("chat_id"))
+    except Exception:
+        return False
+
+
+def send_telegram_message(text: str) -> bool:
+    """Send a message via Telegram Bot API. Returns True on success."""
+    if not has_telegram_config():
+        return False
+    try:
+        cfg = st.secrets["telegram"]
+        url = f"https://api.telegram.org/bot{cfg['bot_token']}/sendMessage"
+        resp = requests.post(
+            url,
+            json={"chat_id": cfg["chat_id"], "text": text, "disable_web_page_preview": True},
+            timeout=10,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 def build_schwab_auth_url() -> str:
     cfg = st.secrets["schwab"]
     base = cfg["auth_url"]
@@ -347,6 +375,54 @@ def build_schwab_auth_url() -> str:
         "scope": "readonly",
     }
     return f"{base}?{urlencode(params)}"
+
+
+def save_schwab_token(token_data: dict) -> None:
+    """Persist token to file so login survives refresh and monitor can use it."""
+    if not token_data or not token_data.get("access_token"):
+        return
+    payload = dict(token_data)
+    payload["_obtained_at"] = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    try:
+        with SCHWAB_TOKEN_FILE.open("w", encoding="utf-8") as f:
+            json.dump(payload, f)
+    except Exception:
+        pass
+
+
+def load_schwab_token() -> dict | None:
+    """Load persisted token from file if present."""
+    if not SCHWAB_TOKEN_FILE.exists():
+        return None
+    try:
+        with SCHWAB_TOKEN_FILE.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def refresh_schwab_token() -> dict:
+    """Use refresh_token to get new access_token; update session and file."""
+    cfg = st.secrets["schwab"]
+    token = st.session_state.get("schwab_token") or load_schwab_token()
+    if not token or not token.get("refresh_token"):
+        raise RuntimeError("No refresh token. Reconnect to Schwab.")
+    credentials = f"{cfg['client_id']}:{cfg['client_secret']}"
+    encoded = base64.b64encode(credentials.encode()).decode()
+    headers = {"Authorization": f"Basic {encoded}"}
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": token["refresh_token"],
+    }
+    resp = requests.post(cfg["token_url"], data=data, headers=headers, timeout=15)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Token refresh failed: {resp.status_code} {resp.text[:300]}")
+    new_token = resp.json()
+    if not new_token.get("refresh_token"):
+        new_token["refresh_token"] = token.get("refresh_token")
+    st.session_state["schwab_token"] = new_token
+    save_schwab_token(new_token)
+    return new_token
 
 
 def exchange_code_for_token(code: str) -> None:
@@ -366,17 +442,27 @@ def exchange_code_for_token(code: str) -> None:
     token_data = resp.json()
     st.session_state["schwab_token"] = token_data
     st.session_state.pop("schwab_auth_error", None)
+    save_schwab_token(token_data)
 
 
 def get_schwab_access_token() -> str:
-    """Return current access_token; refresh if expired."""
+    """Return current access_token; refresh if expired. Restore from file if not in session."""
+    if "schwab_token" not in st.session_state:
+        loaded = load_schwab_token()
+        if loaded:
+            st.session_state["schwab_token"] = loaded
     if "schwab_token" not in st.session_state:
         raise RuntimeError("Not connected to Schwab. Click 'Connect to Schwab' first.")
     token = st.session_state["schwab_token"]
     access = token.get("access_token")
     if not access:
         raise RuntimeError("Schwab token missing access_token. Reconnect to Schwab.")
-    # Optional: check expires_in and refresh using refresh_token if needed
+    # Refresh if expired or expiring within 60s (Schwab access tokens ~30 min)
+    expires_in = token.get("expires_in", 0)
+    obtained = token.get("_obtained_at") or 0
+    if obtained and expires_in and (datetime.datetime.now(datetime.timezone.utc).timestamp() - obtained) >= (expires_in - 60):
+        token = refresh_schwab_token()
+        access = token.get("access_token", access)
     return access
 
 
@@ -385,12 +471,14 @@ def fetch_schwab_live_data(
     expiration_date: datetime.date,
     short_put_strike: float,
     long_put_strike: float,
+    access_token: str | None = None,
 ) -> dict:
     """
     Call Schwab marketdata chains API and return dict with:
     current_price, current_debit_to_close, net_delta, net_theta, net_vega, current_iv
+    If access_token is provided (e.g. for background monitor), use it; else use session token.
     """
-    access_token = get_schwab_access_token()
+    token = access_token or get_schwab_access_token()
     base = "https://api.schwabapi.com/marketdata/v1/chains"
     exp_str = expiration_date.strftime("%Y-%m-%d")
     params = {
@@ -402,7 +490,7 @@ def fetch_schwab_live_data(
         "strikeCount": "20",
     }
     headers = {
-        "Authorization": f"Bearer {access_token}",
+        "Authorization": f"Bearer {token}",
         "Schwab-Client-CorrelId": str(uuid.uuid4()),
     }
     resp = requests.get(base, params=params, headers=headers, timeout=30)
@@ -553,6 +641,11 @@ def main():
                 st.query_params.clear()
             except Exception as e:
                 st.session_state["schwab_auth_error"] = str(e)
+        # Stay logged in: restore token from file if not in session
+        if "schwab_token" not in st.session_state:
+            loaded = load_schwab_token()
+            if loaded and loaded.get("access_token"):
+                st.session_state["schwab_token"] = loaded
 
     # Apply any pending loaded trade data BEFORE widgets are created
     if "loaded_trade_data" in st.session_state:
@@ -679,9 +772,59 @@ def main():
             if "schwab_auth_error" in st.session_state:
                 st.error(f"Auth error: {st.session_state['schwab_auth_error']}")
             if "schwab_token" in st.session_state:
+                # Auto-refresh: when timer fired, fetch live data and optionally send Telegram alert
+                if st.session_state.get("auto_fetch_due"):
+                    try:
+                        ticker_s = st.session_state.get("ticker", "SPY")
+                        exp = st.session_state.get("expiration_date") or datetime.date.today() + datetime.timedelta(days=30)
+                        short_s = st.session_state.get("short_put_strike") or 430.0
+                        long_s = st.session_state.get("long_put_strike") or 420.0
+                        live = fetch_schwab_live_data(ticker_s, exp, short_s, long_s)
+                        live_looks_empty = (
+                            (live.get("current_price") or 0) == 0
+                            and (live.get("current_debit_to_close") or 0) == 0
+                            and (live.get("net_delta") or 0) == 0
+                            and (live.get("net_theta") or 0) == 0
+                            and (live.get("net_vega") or 0) == 0
+                            and (live.get("current_iv") or 0) == 0
+                        )
+                        if not live_looks_empty:
+                            st.session_state["current_price"] = live["current_price"]
+                            st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
+                            st.session_state["net_delta"] = live["net_delta"]
+                            st.session_state["net_theta"] = live["net_theta"]
+                            st.session_state["net_vega"] = live["net_vega"]
+                            st.session_state["current_iv"] = live["current_iv"]
+                            # Check recommendation and send Telegram if Close Now
+                            entry_c = st.session_state.get("entry_credit") or 0.0
+                            iv_entry = st.session_state.get("iv_at_entry") or 0.0
+                            dte = compute_dte(exp)
+                            profit_pct = (entry_c - live["current_debit_to_close"]) / entry_c * 100 if entry_c else 0.0
+                            current_profit = (entry_c - live["current_debit_to_close"]) if entry_c else 0.0
+                            iv_chg = compute_iv_change(live["current_iv"], iv_entry)
+                            near_short = is_price_near_short_strike(live["current_price"], short_s)
+                            rec, _, reasons = get_recommendation(
+                                dte, profit_pct, current_profit,
+                                live["net_delta"], live["net_theta"], iv_chg, near_short,
+                            )
+                            if rec in ("✅ Close Now", "⚠️ Close Now or Roll"):
+                                trade_name = st.session_state.get("trade_label", "").strip() or f"{ticker_s} {short_s}/{long_s}"
+                                send_telegram_message(
+                                    f"Bull Put Spread Alert – {rec}\n"
+                                    f"Trade: {trade_name}\n"
+                                    f"Reasons: " + "; ".join(reasons[:3])
+                                )
+                    except Exception:
+                        pass
+                    st.session_state.pop("auto_fetch_due", None)
+
                 st.success("Connected to Schwab (token stored for this session).")
                 if st.button("Disconnect Schwab"):
                     st.session_state.pop("schwab_token", None)
+                    try:
+                        SCHWAB_TOKEN_FILE.unlink(missing_ok=True)
+                    except Exception:
+                        pass
                     st.rerun()
                 if st.button("📡 Fetch Live Data"):
                     try:
@@ -727,6 +870,24 @@ def main():
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
+                # Auto-refresh: continuously pull live data and alert via Telegram when Close Now
+                auto_refresh = st.checkbox(
+                    "Auto-refresh live data",
+                    value=st.session_state.get("auto_refresh", False),
+                    key="auto_refresh",
+                    help="Refresh live data at the chosen interval and get Telegram alerts when recommendation is Close Now.",
+                )
+                if auto_refresh:
+                    interval_min = st.selectbox(
+                        "Refresh interval (minutes)",
+                        options=[1, 2, 5],
+                        index=0,
+                        key="auto_refresh_interval",
+                    )
+                    if has_telegram_config():
+                        st.caption("Telegram alerts enabled for Close Now / Close Now or Roll.")
+                    else:
+                        st.caption("Add [telegram] bot_token and chat_id in secrets for alerts. For alerts when the app is closed, run: python -m mcps.monitor")
             else:
                 auth_url = build_schwab_auth_url()
                 st.markdown(
@@ -1008,6 +1169,14 @@ def main():
             format="%.2f",
             key="current_iv",
         )
+
+        # Auto-refresh timer: sleep then rerun to trigger live fetch and Telegram alert
+        if st.session_state.get("auto_refresh") and "schwab_token" in st.session_state:
+            interval_sec = int(st.session_state.get("auto_refresh_interval", 1)) * 60
+            with st.spinner(f"Next refresh in {interval_sec}s…"):
+                time.sleep(interval_sec)
+            st.session_state["auto_fetch_due"] = True
+            st.rerun()
 
     # --- Main Layout ---
     st.markdown(
