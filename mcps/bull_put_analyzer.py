@@ -577,10 +577,10 @@ def main():
 
     # --- Sidebar: Inputs ---
     with st.sidebar:
-        # Inner border turns green when field has focus or valid input (no outer band)
+        # Sidebar entry fields: inner border green (override Streamlit's red). No outer band, no JS.
         st.markdown("""
         <style>
-        /* Only the input's own border (inner red band) turns green on focus; no outer box */
+        /* Focus: inner border green for all sidebar inputs */
         [data-testid="stSidebar"] [data-testid="stTextInput"] input:focus,
         [data-testid="stSidebar"] [data-testid="stTextinput"] input:focus,
         [data-testid="stSidebar"] [data-testid="stNumberInput"] input:focus,
@@ -592,16 +592,18 @@ def main():
             border-color: #16a34a !important;
             box-shadow: none !important;
         }
-        /* Number input: green inner border when it has a valid value (set by JS) */
-        [data-testid="stSidebar"] [data-testid="stNumberInput"].number-has-value,
-        [data-testid="stSidebar"] [data-testid="stNumberinput"].number-has-value,
-        [data-testid="stSidebar"] [data-testid="stNumberInput"].number-has-value input,
-        [data-testid="stSidebar"] [data-testid="stNumberinput"].number-has-value input,
-        [data-testid="stSidebar"] [data-testid="stNumberInput"].number-has-value [data-baseweb],
-        [data-testid="stSidebar"] [data-testid="stNumberinput"].number-has-value [data-baseweb],
-        [data-testid="stSidebar"] [data-testid="stNumberInput"].number-has-value div[style*="border"],
-        [data-testid="stSidebar"] [data-testid="stNumberinput"].number-has-value div[style*="border"] {
+        /* Number inputs: force inner border green always (override theme red) */
+        [data-testid="stSidebar"] [data-testid="stNumberInput"] input,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"] input,
+        [data-testid="stSidebar"] [data-testid="stNumberInput"] [data-baseweb],
+        [data-testid="stSidebar"] [data-testid="stNumberinput"] [data-baseweb],
+        [data-testid="stSidebar"] [data-testid="stNumberInput"] > div,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"] > div,
+        [data-testid="stSidebar"] div:has(> input[type="number"]) {
             border-color: #16a34a !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stNumberInput"] input,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"] input {
             box-shadow: inset 0 0 0 1px #16a34a !important;
         }
         /* Text/textarea: green when has content */
@@ -616,50 +618,6 @@ def main():
         }
         </style>
         """, unsafe_allow_html=True)
-
-        # Script: add .number-has-value to number inputs that have a valid value so inner border turns green
-        _script = """
-        <script>
-        (function() {
-            function doc() { try { return (window.frameElement && parent.document) ? parent.document : document; } catch(e) { return document; } }
-            function run() {
-                var root = doc();
-                var sidebar = root.querySelector('[data-testid="stSidebar"]');
-                if (!sidebar) return;
-                var widgets = sidebar.querySelectorAll('[data-testid="stNumberInput"], [data-testid="stNumberinput"]');
-                widgets.forEach(function(widget) {
-                    var input = widget.querySelector('input[type="number"]');
-                    if (!input) return;
-                    var val = input.value;
-                    var hasValue = val !== '' && val !== null && !isNaN(parseFloat(val));
-                    if (hasValue) widget.classList.add('number-has-value');
-                    else widget.classList.remove('number-has-value');
-                });
-            }
-            function onInput() { run(); }
-            setTimeout(function() {
-                run();
-                var root = doc();
-                var sidebar = root.querySelector('[data-testid="stSidebar"]');
-                if (sidebar) {
-                    sidebar.querySelectorAll('input[type="number"]').forEach(function(inp) {
-                        inp.addEventListener('input', onInput);
-                        inp.addEventListener('change', onInput);
-                    });
-                }
-            }, 200);
-            setTimeout(run, 600);
-            setTimeout(run, 1200);
-        })();
-        </script>
-        """
-        try:
-            st.html(_script, height=0, unsafe_allow_javascript=True)
-        except TypeError:
-            try:
-                st.html(_script, unsafe_allow_javascript=True)
-            except Exception:
-                pass
 
         st.markdown(
             "<h2 style='margin-bottom: 0.5rem;'>Bull Put Spread Inputs</h2>",
