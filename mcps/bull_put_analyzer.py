@@ -577,47 +577,94 @@ def main():
 
     # --- Sidebar: Inputs ---
     with st.sidebar:
-        # Sidebar entry fields: inner border green (override Streamlit's red). No outer band, no JS.
+        # Entry fields: red inner border ONLY when empty; when there's a number (or content), red disappears.
         st.markdown("""
         <style>
-        /* Focus: inner border green for all sidebar inputs */
-        [data-testid="stSidebar"] [data-testid="stTextInput"] input:focus,
-        [data-testid="stSidebar"] [data-testid="stTextinput"] input:focus,
-        [data-testid="stSidebar"] [data-testid="stNumberInput"] input:focus,
-        [data-testid="stSidebar"] [data-testid="stNumberinput"] input:focus,
-        [data-testid="stSidebar"] div[data-testid="stDateInput"] input:focus,
-        [data-testid="stSidebar"] div[data-testid="stDateinput"] input:focus,
+        /* Number inputs: red ONLY when empty (.number-empty set by JS); when has number, no red */
+        [data-testid="stSidebar"] [data-testid="stNumberInput"].number-empty input,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"].number-empty input,
+        [data-testid="stSidebar"] [data-testid="stNumberInput"].number-empty [data-baseweb],
+        [data-testid="stSidebar"] [data-testid="stNumberinput"].number-empty [data-baseweb],
+        [data-testid="stSidebar"] [data-testid="stNumberInput"].number-empty > div,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"].number-empty > div {
+            border-color: #dc2626 !important;
+            box-shadow: inset 0 0 0 1px #dc2626 !important;
+        }
+        /* Number inputs with a value: neutral border (red disappears) */
+        [data-testid="stSidebar"] [data-testid="stNumberInput"]:not(.number-empty) input,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"]:not(.number-empty) input,
+        [data-testid="stSidebar"] [data-testid="stNumberInput"]:not(.number-empty) [data-baseweb],
+        [data-testid="stSidebar"] [data-testid="stNumberinput"]:not(.number-empty) [data-baseweb],
+        [data-testid="stSidebar"] [data-testid="stNumberInput"]:not(.number-empty) > div,
+        [data-testid="stSidebar"] [data-testid="stNumberinput"]:not(.number-empty) > div {
+            border-color: #9ca3af !important;
+            box-shadow: inset 0 0 0 1px #9ca3af !important;
+        }
+        /* Text/textarea: red when empty (placeholder shown), neutral when has content */
+        [data-testid="stSidebar"] [data-testid="stTextInput"] input:placeholder-shown,
+        [data-testid="stSidebar"] [data-testid="stTextinput"] input:placeholder-shown,
+        [data-testid="stSidebar"] textarea:placeholder-shown {
+            border-color: #dc2626 !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stTextInput"] input:not(:placeholder-shown),
+        [data-testid="stSidebar"] [data-testid="stTextinput"] input:not(:placeholder-shown),
+        [data-testid="stSidebar"] textarea:not(:placeholder-shown) {
+            border-color: #9ca3af !important;
+        }
+        /* Focus: subtle outline only, no permanent green */
+        [data-testid="stSidebar"] input:focus,
         [data-testid="stSidebar"] textarea:focus {
-            outline: none !important;
-            border-color: #16a34a !important;
-            box-shadow: none !important;
+            outline: 1px solid #9ca3af !important;
+            outline-offset: 0 !important;
         }
-        /* Number inputs: force inner border green always (override theme red) */
-        [data-testid="stSidebar"] [data-testid="stNumberInput"] input,
-        [data-testid="stSidebar"] [data-testid="stNumberinput"] input,
-        [data-testid="stSidebar"] [data-testid="stNumberInput"] [data-baseweb],
-        [data-testid="stSidebar"] [data-testid="stNumberinput"] [data-baseweb],
-        [data-testid="stSidebar"] [data-testid="stNumberInput"] > div,
-        [data-testid="stSidebar"] [data-testid="stNumberinput"] > div,
-        [data-testid="stSidebar"] div:has(> input[type="number"]) {
-            border-color: #16a34a !important;
-        }
-        [data-testid="stSidebar"] [data-testid="stNumberInput"] input,
-        [data-testid="stSidebar"] [data-testid="stNumberinput"] input {
-            box-shadow: inset 0 0 0 1px #16a34a !important;
-        }
-        /* Text/textarea: green when has content */
-        [data-testid="stSidebar"] [data-testid="stTextInput"] input:valid:not(:placeholder-shown),
-        [data-testid="stSidebar"] [data-testid="stTextinput"] input:valid:not(:placeholder-shown),
-        [data-testid="stSidebar"] textarea:valid:not(:placeholder-shown) {
-            border-color: #16a34a !important;
-        }
-        [data-testid="stSidebar"] div[data-testid="stDateInput"] input:valid:not([value=""]),
-        [data-testid="stSidebar"] div[data-testid="stDateinput"] input:valid:not([value=""]) {
-            border-color: #16a34a !important;
+        /* Date input: neutral (theme default); avoid forcing red */
+        [data-testid="stSidebar"] div[data-testid="stDateInput"] input,
+        [data-testid="stSidebar"] div[data-testid="stDateinput"] input {
+            border-color: #9ca3af !important;
         }
         </style>
         """, unsafe_allow_html=True)
+
+        # JS: add .number-empty when number input has no value (red); remove when has number (red disappears)
+        _script = """
+        <script>
+        (function() {
+            function doc() { try { return window.parent && window.parent.document ? window.parent.document : document; } catch(e) { return document; } }
+            function run() {
+                var root = doc();
+                var sidebar = root.querySelector('[data-testid="stSidebar"]');
+                if (!sidebar) return;
+                sidebar.querySelectorAll('[data-testid="stNumberInput"], [data-testid="stNumberinput"]').forEach(function(widget) {
+                    var input = widget.querySelector('input[type="number"]');
+                    if (!input) return;
+                    var val = input.value;
+                    var empty = val === '' || val === null || isNaN(parseFloat(val));
+                    if (empty) widget.classList.add('number-empty'); else widget.classList.remove('number-empty');
+                });
+            }
+            function onInput() { run(); }
+            setTimeout(function() {
+                run();
+                var root = doc();
+                var sidebar = root.querySelector('[data-testid="stSidebar"]');
+                if (sidebar) {
+                    sidebar.querySelectorAll('input[type="number"]').forEach(function(inp) {
+                        inp.addEventListener('input', onInput);
+                        inp.addEventListener('change', onInput);
+                    });
+                }
+            }, 250);
+            [500, 1000, 2000].forEach(function(ms) { setTimeout(run, ms); });
+        })();
+        </script>
+        """
+        try:
+            st.html(_script, height=0, unsafe_allow_javascript=True)
+        except TypeError:
+            try:
+                st.html(_script, unsafe_allow_javascript=True)
+            except Exception:
+                pass
 
         st.markdown(
             "<h2 style='margin-bottom: 0.5rem;'>Bull Put Spread Inputs</h2>",
