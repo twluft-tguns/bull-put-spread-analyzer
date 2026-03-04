@@ -250,13 +250,40 @@ def delete_trade(owner_key: str, label: str) -> None:
 
 
 def ensure_workspace_key() -> str:
-    # Only set a new key when the key has never been set (first visit).
-    # Do not replace when empty, so reruns (e.g. after Fetch Live Data) don't change the key.
-    if "workspace_key" not in st.session_state:
-        import secrets
+    # Persist workspace key in URL so it survives reruns (e.g. after Fetch Live Data) and worker changes on Streamlit Cloud.
+    import secrets
 
-        st.session_state["workspace_key"] = secrets.token_urlsafe(16)
-    return st.session_state["workspace_key"]
+    try:
+        q = st.query_params
+    except Exception:
+        q = {}
+
+    url_key = None
+    if hasattr(q, "get"):
+        url_key = (q.get("workspace_key") or "").strip()
+    if isinstance(url_key, list):
+        url_key = (url_key[0] or "").strip() if url_key else ""
+
+    if url_key:
+        st.session_state["workspace_key"] = url_key
+        return url_key
+
+    if st.session_state.get("workspace_key"):
+        current = str(st.session_state["workspace_key"]).strip()
+        if current:
+            try:
+                st.query_params["workspace_key"] = current
+            except Exception:
+                pass
+            return current
+
+    new_key = secrets.token_urlsafe(16)
+    st.session_state["workspace_key"] = new_key
+    try:
+        st.query_params["workspace_key"] = new_key
+    except Exception:
+        pass
+    return new_key
 
 
 def has_schwab_config() -> bool:
@@ -518,6 +545,17 @@ def main():
             key="workspace_key",
             help="This key separates your saved trades from other users on the public app. Save it somewhere safe.",
         )
+        # Keep URL in sync so the key survives reruns (e.g. after Fetch Live Data).
+        if workspace_key:
+            try:
+                q = st.query_params
+                current = q.get("workspace_key") if hasattr(q, "get") else None
+                if isinstance(current, list):
+                    current = current[0] if current else None
+                if current != workspace_key:
+                    st.query_params["workspace_key"] = workspace_key
+            except Exception:
+                pass
 
         st.markdown("---")
         st.markdown("#### 📝 Manual entry")
