@@ -2,7 +2,9 @@ import datetime
 from typing import List, Tuple
 import json
 from pathlib import Path
+from urllib.parse import urlencode
 
+import requests
 import streamlit as st
 
 TRADES_FILE = Path("saved_trades.json")
@@ -254,12 +256,64 @@ def ensure_workspace_key() -> str:
     return st.session_state["workspace_key"]
 
 
+def has_schwab_config() -> bool:
+    try:
+        cfg = st.secrets.get("schwab", {})
+        return bool(cfg.get("client_id") and cfg.get("client_secret") and cfg.get("auth_url") and cfg.get("token_url"))
+    except Exception:
+        return False
+
+
+def build_schwab_auth_url() -> str:
+    cfg = st.secrets["schwab"]
+    base = cfg["auth_url"]
+    params = {
+        "response_type": "code",
+        "client_id": cfg["client_id"],
+        "redirect_uri": cfg["redirect_uri"],
+        "scope": "readonly",
+    }
+    return f"{base}?{urlencode(params)}"
+
+
+def exchange_code_for_token(code: str) -> None:
+    cfg = st.secrets["schwab"]
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": cfg["redirect_uri"],
+        "client_id": cfg["client_id"],
+        "client_secret": cfg["client_secret"],
+    }
+    resp = requests.post(cfg["token_url"], data=data, timeout=15)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Token request failed: {resp.status_code} {resp.text}")
+    token_data = resp.json()
+    st.session_state["schwab_token"] = token_data
+
+
 def main():
     st.set_page_config(
         page_title="Bull Put Spread Analyzer – Optimal Exit Time",
         layout="wide",
         page_icon="📊",
     )
+
+    # Handle Schwab OAuth redirect BEFORE widgets are created
+    if has_schwab_config():
+        try:
+            params = st.query_params
+        except Exception:
+            params = {}
+        code_values = params.get("code")
+        if code_values and "schwab_token" not in st.session_state:
+            code = code_values[0] if isinstance(code_values, list) else code_values
+            try:
+                exchange_code_for_token(code)
+                # Clear code from URL on next run
+                st.query_params.clear()
+            except Exception as e:
+                st.session_state["schwab_auth_error"] = str(e)
 
     # Apply any pending loaded trade data BEFORE widgets are created
     if "loaded_trade_data" in st.session_state:
@@ -289,6 +343,26 @@ def main():
             unsafe_allow_html=True,
         )
         st.caption("Analyze your bull put spread and get a clear exit recommendation.")
+
+        st.markdown("#### Schwab Connection")
+        if not has_schwab_config():
+            st.info("Schwab API not configured. Add [schwab] secrets to enable live data.")
+        else:
+            if "schwab_auth_error" in st.session_state:
+                st.error(f"Auth error: {st.session_state['schwab_auth_error']}")
+            if "schwab_token" in st.session_state:
+                st.success("Connected to Schwab (token stored for this session).")
+                if st.button("Disconnect Schwab"):
+                    st.session_state.pop("schwab_token", None)
+                    st.rerun()
+            else:
+                auth_url = build_schwab_auth_url()
+                st.markdown(
+                    f"<a href='{auth_url}' target='_blank' style='display:inline-block;padding:0.4rem 0.75rem;"
+                    f"background-color:#2563eb;color:white;border-radius:0.35rem;text-decoration:none;font-size:0.85rem;'>"
+                    f"Connect to Schwab</a>",
+                    unsafe_allow_html=True,
+                )
 
         st.markdown("#### Trade Storage")
         if has_supabase_config():
