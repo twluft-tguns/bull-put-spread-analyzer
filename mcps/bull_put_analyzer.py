@@ -408,7 +408,7 @@ def fetch_schwab_live_data(
     if not long_c or not isinstance(long_c, dict):
         raise RuntimeError(f"Long put strike {long_put_strike} not found in chain.")
 
-    # QuoteOption may be the contract itself or nested under "quote"
+    # Chains API returns OptionContract: bidPrice, askPrice, lastPrice, markPrice, closePrice, delta, theta, vega, volatility at top level (no "quote" wrapper)
     def quote(c):
         if isinstance(c, dict) and isinstance(c.get("quote"), dict):
             return c["quote"]
@@ -421,12 +421,12 @@ def fetch_schwab_live_data(
         except (TypeError, ValueError):
             return default
 
-    # QuoteOption schema: bidPrice, askPrice, mark, lastPrice, closePrice, delta, theta, vega, volatility
+    # OptionContract: bidPrice, askPrice, markPrice, lastPrice, closePrice (use markPrice; QuoteOption uses "mark")
     def get_price(c, ask_not_bid):
         q = quote(c)
         if ask_not_bid:
-            return f(q, "askPrice") or f(q, "mark") or f(q, "lastPrice") or f(q, "closePrice")
-        return f(q, "bidPrice") or f(q, "mark") or f(q, "lastPrice") or f(q, "closePrice")
+            return f(q, "askPrice") or f(q, "markPrice") or f(q, "mark") or f(q, "lastPrice") or f(q, "closePrice")
+        return f(q, "bidPrice") or f(q, "markPrice") or f(q, "mark") or f(q, "lastPrice") or f(q, "closePrice")
 
     short_bid = get_price(short_c, False)
     short_ask = get_price(short_c, True)
@@ -434,14 +434,20 @@ def fetch_schwab_live_data(
     long_ask = get_price(long_c, True)
     debit_to_close = max((short_ask - long_bid), 0.0)
     if debit_to_close == 0:
-        short_mid = f(quote(short_c), "mark") or f(quote(short_c), "lastPrice") or f(quote(short_c), "closePrice") or ((short_bid + short_ask) / 2 if (short_bid or short_ask) else 0)
-        long_mid = f(quote(long_c), "mark") or f(quote(long_c), "lastPrice") or f(quote(long_c), "closePrice") or ((long_bid + long_ask) / 2 if (long_bid or long_ask) else 0)
+        qs, ql = quote(short_c), quote(long_c)
+        short_mid = f(qs, "markPrice") or f(qs, "mark") or f(qs, "lastPrice") or f(qs, "closePrice") or ((short_bid + short_ask) / 2 if (short_bid or short_ask) else 0)
+        long_mid = f(ql, "markPrice") or f(ql, "mark") or f(ql, "lastPrice") or f(ql, "closePrice") or ((long_bid + long_ask) / 2 if (long_bid or long_ask) else 0)
         debit_to_close = max(short_mid - long_mid, 0.0)
 
-    # Greeks and IV from QuoteOption: delta, theta, vega, volatility (top-level or in quote)
+    # OptionContract: delta, theta, vega, volatility at top level (no nested quote)
     def greek(c, name):
         q = quote(c)
-        return f(q, name) or 0.0
+        val = f(q, name)
+        if val != 0.0:
+            return val
+        if q is not c:
+            val = f(c, name)
+        return val or 0.0
 
     short_delta = greek(short_c, "delta")
     short_theta = greek(short_c, "theta")
@@ -449,9 +455,11 @@ def fetch_schwab_live_data(
     long_delta = greek(long_c, "delta")
     long_theta = greek(long_c, "theta")
     long_vega = greek(long_c, "vega")
-    net_delta = (-short_delta + long_delta) * 100
-    net_theta = (-short_theta + long_theta) * 100
-    net_vega = (-short_vega + long_vega) * 100
+    # Net greeks for spread: -short + long. Keep per-contract scale (no * 100).
+    # Delta is -1..1 per share; theta/vega are $ per day / $ per 1% IV per contract.
+    net_delta = -short_delta + long_delta
+    net_theta = -short_theta + long_theta
+    net_vega = -short_vega + long_vega
 
     # IV: QuoteOption.volatility (often decimal 0.22 = 22%)
     short_iv = greek(short_c, "volatility")
@@ -460,11 +468,11 @@ def fetch_schwab_live_data(
     else:
         current_iv = short_iv
 
-    # Underlying: chain may have data.underlyingPrice or data.underlying with quote fields
+    # OptionChain: underlyingPrice at root; underlying: Underlying{} may have lastPrice, markPrice, etc.
     underlying = data.get("underlying") or {}
     q = quote(underlying) if isinstance(underlying, dict) else underlying
     current_price = (
-        f(q, "lastPrice") or f(q, "mark") or f(q, "closePrice") or f(q, "askPrice") or 0.0
+        f(q, "lastPrice") or f(q, "markPrice") or f(q, "mark") or f(q, "closePrice") or f(q, "askPrice") or 0.0
     )
     if current_price <= 0 and data.get("underlyingPrice") is not None:
         try:
