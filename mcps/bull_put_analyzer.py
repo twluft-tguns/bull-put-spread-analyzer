@@ -873,6 +873,17 @@ def main():
                 key="trade_to_load",
             )
 
+            # Auto-populate manual entry with top trade when it's selected by default (e.g. on login)
+            if (
+                saved_trades
+                and trade_to_load != "(none)"
+                and trade_to_load == load_options[1]
+                and st.session_state.get("last_auto_load_workspace") != workspace_key
+            ):
+                st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+                st.session_state["last_auto_load_workspace"] = workspace_key
+                st.rerun()
+
         with col_del:
             if st.button("🗑️ Delete"):
                 if trade_to_load != "(none)":
