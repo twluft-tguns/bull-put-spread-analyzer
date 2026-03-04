@@ -553,19 +553,28 @@ def main():
                             st.session_state["short_put_strike"],
                             st.session_state["long_put_strike"],
                         )
-                        st.session_state["current_price"] = live["current_price"]
-                        st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
-                        st.session_state["net_delta"] = live["net_delta"]
-                        st.session_state["net_theta"] = live["net_theta"]
-                        st.session_state["net_vega"] = live["net_vega"]
-                        st.session_state["current_iv"] = live["current_iv"]
-                        st.success("Live data loaded.")
-                        if live["current_debit_to_close"] == 0 or (
-                            live["net_delta"] == 0 and live["net_theta"] == 0 and live["net_vega"] == 0
-                        ):
+                        # Don't overwrite with zeros: if API returned no useful data, keep existing values
+                        live_looks_empty = (
+                            (live["current_price"] or 0) == 0
+                            and (live["current_debit_to_close"] or 0) == 0
+                            and (live["net_delta"] or 0) == 0
+                            and (live["net_theta"] or 0) == 0
+                            and (live["net_vega"] or 0) == 0
+                            and (live["current_iv"] or 0) == 0
+                        )
+                        if live_looks_empty:
                             st.warning(
-                                "Debit to close or greeks are zero. Data may be delayed or the API may use different field names."
+                                "Live data came back empty (all zeros). Your current values were kept. "
+                                "Try again during market hours or check API response."
                             )
+                        else:
+                            st.session_state["current_price"] = live["current_price"]
+                            st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
+                            st.session_state["net_delta"] = live["net_delta"]
+                            st.session_state["net_theta"] = live["net_theta"]
+                            st.session_state["net_vega"] = live["net_vega"]
+                            st.session_state["current_iv"] = live["current_iv"]
+                            st.success("Live data loaded.")
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
