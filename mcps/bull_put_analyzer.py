@@ -902,6 +902,52 @@ def main():
             key="notes",
         )
 
+        # Big red Save Trade button: save manual entry to the trade selected in the dropdown
+        st.markdown(
+            """
+            <style>
+            section[data-testid="stSidebar"] [data-testid="baseButton-primary"] {
+                background-color: #c62828 !important;
+                font-size: 1.05rem !important;
+                font-weight: 600 !important;
+                padding: 0.5rem 1rem !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        save_target = trade_to_load if trade_to_load != "(none)" else (trade_label.strip() or None)
+        if st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual"):
+            if save_target:
+                # Merge manual entry into existing trade so we don't wipe live data
+                existing = dict(saved_trades.get(save_target, {})) if save_target in saved_trades else {}
+                payload = {
+                    **existing,
+                    "ticker": ticker,
+                    "short_put_strike": short_put_strike,
+                    "long_put_strike": long_put_strike,
+                    "expiration_date": str(expiration_date),
+                    "entry_credit": entry_credit,
+                    "iv_at_entry": iv_at_entry,
+                    "notes": notes,
+                }
+                # New trade: include live fields from session so payload is complete
+                if save_target not in saved_trades:
+                    payload["current_price"] = st.session_state.get("current_price", 440.0)
+                    payload["current_debit_to_close"] = st.session_state.get("current_debit_to_close", 0.40)
+                    payload["net_delta"] = st.session_state.get("net_delta", 0.20)
+                    payload["net_theta"] = st.session_state.get("net_theta", 3.50)
+                    payload["net_vega"] = st.session_state.get("net_vega", -0.40)
+                    payload["current_iv"] = st.session_state.get("current_iv", 22.0)
+                try:
+                    upsert_trade(workspace_key, save_target, payload)
+                    st.success(f"Saved manual entry to '{save_target}' (IV at Entry {iv_at_entry}%)")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Save failed: {e}")
+            else:
+                st.warning("Select a trade in the dropdown above to save to, or enter a new trade name.")
+
         st.markdown("---")
         st.markdown("#### 📡 Live / current data")
         st.caption("Filled by **Fetch Live Data** when connected to Schwab, or enter manually.")
@@ -962,34 +1008,6 @@ def main():
             format="%.2f",
             key="current_iv",
         )
-
-        # Save Trade button after all fields so payload uses current widget values (fixes IV at Entry not saving)
-        st.markdown("---")
-        if st.button("💾 Save Trade", type="primary", use_container_width=True):
-            if trade_label.strip():
-                payload = {
-                    "ticker": ticker,
-                    "short_put_strike": short_put_strike,
-                    "long_put_strike": long_put_strike,
-                    "expiration_date": str(expiration_date),
-                    "entry_credit": entry_credit,
-                    "current_price": current_price,
-                    "current_debit_to_close": current_debit_to_close,
-                    "net_delta": net_delta,
-                    "net_theta": net_theta,
-                    "net_vega": net_vega,
-                    "current_iv": current_iv,
-                    "iv_at_entry": iv_at_entry,
-                    "notes": notes,
-                }
-                try:
-                    upsert_trade(workspace_key, trade_label.strip(), payload)
-                    st.success(f"Saved '{trade_label.strip()}' (including IV at Entry {iv_at_entry}%)")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Save failed: {e}")
-            else:
-                st.warning("Enter a trade name/label above before saving.")
 
     # --- Main Layout ---
     st.markdown(
