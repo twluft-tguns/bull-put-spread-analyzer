@@ -805,31 +805,7 @@ def main():
         col_save, col_load, col_del = st.columns([1, 1, 1])
 
         with col_save:
-            if st.button("💾 Save Trade"):
-                if trade_label.strip():
-                    # All fields from session_state (manual and live widgets are below)
-                    payload = {
-                        "ticker": st.session_state.get("ticker", "SPY"),
-                        "short_put_strike": st.session_state.get("short_put_strike", 430.0),
-                        "long_put_strike": st.session_state.get("long_put_strike", 420.0),
-                        "expiration_date": str(st.session_state.get("expiration_date", datetime.date.today() + datetime.timedelta(days=30))),
-                        "entry_credit": st.session_state.get("entry_credit", 2.00),
-                        "current_price": st.session_state.get("current_price", 440.0),
-                        "current_debit_to_close": st.session_state.get("current_debit_to_close", 0.40),
-                        "net_delta": st.session_state.get("net_delta", 0.20),
-                        "net_theta": st.session_state.get("net_theta", 3.50),
-                        "net_vega": st.session_state.get("net_vega", -0.40),
-                        "current_iv": st.session_state.get("current_iv", 22.0),
-                        "iv_at_entry": st.session_state.get("iv_at_entry", 25.0),
-                        "notes": st.session_state.get("notes", ""),
-                    }
-                    try:
-                        upsert_trade(workspace_key, trade_label.strip(), payload)
-                        st.success(f"Saved trade '{trade_label.strip()}'")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Save failed: {e}")
-
+            st.caption("Save after filling form below ↓")
         with col_load:
             load_options = ["(none)"] + list(saved_trades.keys())
             if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
@@ -986,6 +962,34 @@ def main():
             format="%.2f",
             key="current_iv",
         )
+
+        # Save Trade button after all fields so payload uses current widget values (fixes IV at Entry not saving)
+        st.markdown("---")
+        if st.button("💾 Save Trade", type="primary", use_container_width=True):
+            if trade_label.strip():
+                payload = {
+                    "ticker": ticker,
+                    "short_put_strike": short_put_strike,
+                    "long_put_strike": long_put_strike,
+                    "expiration_date": str(expiration_date),
+                    "entry_credit": entry_credit,
+                    "current_price": current_price,
+                    "current_debit_to_close": current_debit_to_close,
+                    "net_delta": net_delta,
+                    "net_theta": net_theta,
+                    "net_vega": net_vega,
+                    "current_iv": current_iv,
+                    "iv_at_entry": iv_at_entry,
+                    "notes": notes,
+                }
+                try:
+                    upsert_trade(workspace_key, trade_label.strip(), payload)
+                    st.success(f"Saved '{trade_label.strip()}' (including IV at Entry {iv_at_entry}%)")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Save failed: {e}")
+            else:
+                st.warning("Enter a trade name/label above before saving.")
 
     # --- Main Layout ---
     st.markdown(
