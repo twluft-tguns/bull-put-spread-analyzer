@@ -757,6 +757,86 @@ def main():
             key="notes",
         )
 
+        # --- Saved Trades (right under Manual entry) ---
+        st.markdown("---")
+        st.markdown("#### Saved Trades")
+
+        try:
+            saved_trades = list_trades(workspace_key)
+        except Exception as e:
+            saved_trades = {}
+            st.error(f"Could not load saved trades: {e}")
+
+        trade_label = st.text_input("Trade Name / Label", key="trade_label")
+
+        col_save, col_load, col_del = st.columns([1, 1, 1])
+
+        with col_save:
+            if st.button("💾 Save Trade"):
+                if trade_label.strip():
+                    # Manual fields from widgets above; live fields from session_state (defined below)
+                    payload = {
+                        "ticker": ticker,
+                        "short_put_strike": short_put_strike,
+                        "long_put_strike": long_put_strike,
+                        "expiration_date": str(expiration_date),
+                        "entry_credit": entry_credit,
+                        "current_price": st.session_state.get("current_price", 440.0),
+                        "current_debit_to_close": st.session_state.get("current_debit_to_close", 0.40),
+                        "net_delta": st.session_state.get("net_delta", 0.20),
+                        "net_theta": st.session_state.get("net_theta", 3.50),
+                        "net_vega": st.session_state.get("net_vega", -0.40),
+                        "current_iv": st.session_state.get("current_iv", 22.0),
+                        "iv_at_entry": iv_at_entry,
+                        "notes": notes,
+                    }
+                    try:
+                        upsert_trade(workspace_key, trade_label.strip(), payload)
+                        st.success(f"Saved trade '{trade_label.strip()}'")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Save failed: {e}")
+
+        with col_load:
+            load_options = ["(none)"] + list(saved_trades.keys())
+            if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
+                default_load_index = load_options.index(st.session_state["trade_to_load"])
+            elif saved_trades:
+                default_load_index = 1
+            else:
+                default_load_index = 0
+            trade_to_load = st.selectbox(
+                "Load Trade",
+                options=load_options,
+                index=default_load_index,
+                key="trade_to_load",
+            )
+
+            if (
+                saved_trades
+                and trade_to_load != "(none)"
+                and trade_to_load == load_options[1]
+                and st.session_state.get("last_auto_load_workspace") != workspace_key
+            ):
+                st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+                st.session_state["last_auto_load_workspace"] = workspace_key
+                st.rerun()
+
+        with col_del:
+            if st.button("🗑️ Delete"):
+                if trade_to_load != "(none)":
+                    try:
+                        delete_trade(workspace_key, trade_to_load)
+                        st.success(f"Deleted '{trade_to_load}'")
+                        st.session_state["trade_to_load"] = "(none)"
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Delete failed: {e}")
+
+        if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade"):
+            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+            st.rerun()
+
         st.markdown("---")
         st.markdown("#### 📡 Live / current data")
         st.caption("Filled by **Fetch Live Data** when connected to Schwab, or enter manually.")
@@ -817,88 +897,6 @@ def main():
             format="%.2f",
             key="current_iv",
         )
-
-        # --- Saved trades controls ---
-        st.markdown("---")
-        st.markdown("#### Saved Trades")
-
-        try:
-            saved_trades = list_trades(workspace_key)
-        except Exception as e:
-            saved_trades = {}
-            st.error(f"Could not load saved trades: {e}")
-
-        trade_label = st.text_input("Trade Name / Label", key="trade_label")
-
-        col_save, col_load, col_del = st.columns([1, 1, 1])
-
-        with col_save:
-            if st.button("💾 Save Trade"):
-                if trade_label.strip():
-                    # Use widget return values so we save exactly what is displayed (avoids session_state timing)
-                    payload = {
-                        "ticker": ticker,
-                        "short_put_strike": short_put_strike,
-                        "long_put_strike": long_put_strike,
-                        "expiration_date": str(expiration_date),
-                        "entry_credit": entry_credit,
-                        "current_price": current_price,
-                        "current_debit_to_close": current_debit_to_close,
-                        "net_delta": net_delta,
-                        "net_theta": net_theta,
-                        "net_vega": net_vega,
-                        "current_iv": current_iv,
-                        "iv_at_entry": iv_at_entry,
-                        "notes": notes,
-                    }
-                    try:
-                        upsert_trade(workspace_key, trade_label.strip(), payload)
-                        st.success(f"Saved trade '{trade_label.strip()}'")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Save failed: {e}")
-
-        with col_load:
-            # Order: most recent first (Supabase order preserved); default to first trade on load
-            load_options = ["(none)"] + list(saved_trades.keys())
-            if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
-                default_load_index = load_options.index(st.session_state["trade_to_load"])
-            elif saved_trades:
-                default_load_index = 1  # first trade
-            else:
-                default_load_index = 0
-            trade_to_load = st.selectbox(
-                "Load Trade",
-                options=load_options,
-                index=default_load_index,
-                key="trade_to_load",
-            )
-
-            # Auto-populate manual entry with top trade when it's selected by default (e.g. on login)
-            if (
-                saved_trades
-                and trade_to_load != "(none)"
-                and trade_to_load == load_options[1]
-                and st.session_state.get("last_auto_load_workspace") != workspace_key
-            ):
-                st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
-                st.session_state["last_auto_load_workspace"] = workspace_key
-                st.rerun()
-
-        with col_del:
-            if st.button("🗑️ Delete"):
-                if trade_to_load != "(none)":
-                    try:
-                        delete_trade(workspace_key, trade_to_load)
-                        st.success(f"Deleted '{trade_to_load}'")
-                        st.session_state["trade_to_load"] = "(none)"
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Delete failed: {e}")
-
-        if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade"):
-            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
-            st.rerun()
 
     # --- Main Layout ---
     st.markdown(
