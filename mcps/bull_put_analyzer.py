@@ -1,5 +1,6 @@
 import base64
 import datetime
+import uuid
 from typing import List, Tuple
 import json
 from pathlib import Path
@@ -358,7 +359,10 @@ def fetch_schwab_live_data(
         "includeUnderlyingQuote": "true",
         "strikeCount": "20",
     }
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Schwab-Client-CorrelId": str(uuid.uuid4()),
+    }
     resp = requests.get(base, params=params, headers=headers, timeout=30)
     if resp.status_code != 200:
         raise RuntimeError(f"Chains request failed: {resp.status_code} {resp.text[:500]}")
@@ -402,10 +406,11 @@ def fetch_schwab_live_data(
         except (TypeError, ValueError):
             return default
 
-    short_bid = f(short_c, "bid")
-    short_ask = f(short_c, "ask")
-    long_bid = f(long_c, "bid")
-    long_ask = f(long_c, "ask")
+    # Option contract uses bidPrice/askPrice (per Schwab schema)
+    short_bid = f(short_c, "bidPrice")
+    short_ask = f(short_c, "askPrice")
+    long_bid = f(long_c, "bidPrice")
+    long_ask = f(long_c, "askPrice")
     debit_to_close = max((short_ask - long_bid), 0.0)
 
     # Greeks: per-contract from API; net for spread = (-short + long) * 100
@@ -426,10 +431,9 @@ def fetch_schwab_live_data(
     else:
         current_iv = short_iv
 
-    # Underlying price from chain or quote
+    # Underlying price: doc shows "underlying" has last, mark, bid, ask, close directly
     underlying = data.get("underlying") or {}
-    quote = underlying.get("quote") or underlying
-    current_price = f(quote, "last") or f(quote, "close") or f(quote, "ask") or 0.0
+    current_price = f(underlying, "last") or f(underlying, "mark") or f(underlying, "close") or f(underlying, "ask") or 0.0
     if current_price <= 0 and data.get("underlyingPrice"):
         current_price = float(data["underlyingPrice"])
 
