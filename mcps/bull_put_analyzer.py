@@ -547,11 +547,15 @@ def main():
                     st.rerun()
                 if st.button("📡 Fetch Live Data"):
                     try:
+                        # Capture current form values so they are not lost on rerun
+                        saved_expiration = st.session_state.get("expiration_date")
+                        saved_short = st.session_state.get("short_put_strike")
+                        saved_long = st.session_state.get("long_put_strike")
                         live = fetch_schwab_live_data(
                             st.session_state["ticker"],
-                            st.session_state["expiration_date"],
-                            st.session_state["short_put_strike"],
-                            st.session_state["long_put_strike"],
+                            saved_expiration or datetime.date.today() + datetime.timedelta(days=30),
+                            saved_short or 430.0,
+                            saved_long or 420.0,
                         )
                         # Don't overwrite with zeros: if API returned no useful data, keep existing values
                         live_looks_empty = (
@@ -575,6 +579,13 @@ def main():
                             st.session_state["net_vega"] = live["net_vega"]
                             st.session_state["current_iv"] = live["current_iv"]
                             st.success("Live data loaded.")
+                        # Restore form values so DTE and strikes don't reset on rerun
+                        if saved_expiration is not None:
+                            st.session_state["expiration_date"] = saved_expiration
+                        if saved_short is not None:
+                            st.session_state["short_put_strike"] = saved_short
+                        if saved_long is not None:
+                            st.session_state["long_put_strike"] = saved_long
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
@@ -619,11 +630,19 @@ def main():
         col_strikes = st.columns(2)
         with col_strikes[0]:
             short_put_strike = st.number_input(
-                "Short Put Strike", min_value=0.0, value=430.0, step=1.0, key="short_put_strike"
+                "Short Put Strike",
+                min_value=0.0,
+                value=st.session_state.get("short_put_strike", 430.0),
+                step=1.0,
+                key="short_put_strike",
             )
         with col_strikes[1]:
             long_put_strike = st.number_input(
-                "Long Put Strike", min_value=0.0, value=420.0, step=1.0, key="long_put_strike"
+                "Long Put Strike",
+                min_value=0.0,
+                value=st.session_state.get("long_put_strike", 420.0),
+                step=1.0,
+                key="long_put_strike",
             )
 
         default_expiration = datetime.date.today() + datetime.timedelta(days=30)
