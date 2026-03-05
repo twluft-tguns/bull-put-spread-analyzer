@@ -828,9 +828,10 @@ def main():
                     st.rerun()
                 # Export token so user can save to project folder for the background monitor (e.g. after connecting on Streamlit Cloud)
                 token_data = st.session_state.get("schwab_token") or {}
-                if token_data and token_data.get("access_token"):
+                if token_data:
                     payload = dict(token_data)
-                    payload["_obtained_at"] = datetime.datetime.now(datetime.timezone.utc).timestamp()
+                    if not payload.get("_obtained_at"):
+                        payload["_obtained_at"] = datetime.datetime.now(datetime.timezone.utc).timestamp()
                     token_json = json.dumps(payload, indent=2)
                     st.download_button(
                         label="📥 Download token for monitor",
