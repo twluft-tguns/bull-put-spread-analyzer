@@ -826,6 +826,19 @@ def main():
                     except Exception:
                         pass
                     st.rerun()
+                # Export token so user can save to project folder for the background monitor (e.g. after connecting on Streamlit Cloud)
+                token_data = st.session_state.get("schwab_token") or {}
+                if token_data and token_data.get("access_token"):
+                    payload = dict(token_data)
+                    payload["_obtained_at"] = datetime.datetime.now(datetime.timezone.utc).timestamp()
+                    token_json = json.dumps(payload, indent=2)
+                    st.download_button(
+                        label="📥 Download token for monitor",
+                        data=token_json,
+                        file_name="schwab_token.json",
+                        mime="application/json",
+                        help="Save this file as schwab_token.json in your project folder so the background monitor can run on your PC.",
+                    )
                 if st.button("📡 Fetch Live Data"):
                     try:
                         # Capture current form values so they are not lost on rerun
