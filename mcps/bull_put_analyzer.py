@@ -1153,65 +1153,8 @@ def main():
                 st.warning("Select a trade in the dropdown above to save to, or enter a new trade name.")
 
         st.markdown("---")
-        st.markdown("#### 📡 Live / current data")
-        st.caption("Filled by **Fetch Live Data** when connected to Schwab, or enter manually.")
-        current_price = st.number_input(
-            "Current Underlying Price",
-            min_value=0.0,
-            value=st.session_state.get("current_price", 440.0),
-            step=0.5,
-            format="%.2f",
-            key="current_price",
-        )
-
-        current_debit_to_close = st.number_input(
-            "Current Debit to Close (per spread)",
-            min_value=0.0,
-            value=st.session_state.get("current_debit_to_close", 0.40),
-            step=0.05,
-            format="%.2f",
-            key="current_debit_to_close",
-        )
-
-        net_delta = st.number_input(
-            "Net Delta",
-            min_value=-2.0,
-            max_value=2.0,
-            value=st.session_state.get("net_delta", 0.20),
-            step=0.01,
-            format="%.2f",
-            key="net_delta",
-        )
-
-        net_theta = st.number_input(
-            "Net Theta (daily, $ per spread)",
-            min_value=-20.0,
-            max_value=20.0,
-            value=st.session_state.get("net_theta", 3.50),
-            step=0.10,
-            format="%.2f",
-            key="net_theta",
-        )
-
-        net_vega = st.number_input(
-            "Net Vega",
-            min_value=-10.0,
-            max_value=10.0,
-            value=st.session_state.get("net_vega", -0.40),
-            step=0.05,
-            format="%.2f",
-            key="net_vega",
-        )
-
-        current_iv = st.number_input(
-            "Current IV (%)",
-            min_value=0.0,
-            max_value=200.0,
-            value=st.session_state.get("current_iv", 22.0),
-            step=0.5,
-            format="%.2f",
-            key="current_iv",
-        )
+        # Live data comes from Fetch Live Data / auto-fetch only (read-only; no inputs here)
+        # Values are in session state and shown in the main area.
 
         # Auto-refresh timer: sleep then rerun to trigger live fetch and Telegram alert
         if st.session_state.get("auto_refresh") and "schwab_token" in st.session_state:
@@ -1228,6 +1171,14 @@ def main():
     )
     st.caption("Quickly evaluate whether to close, hold, or roll your bull put spread based on profit, DTE, greeks, and volatility.")
 
+    # Live data from Schwab (read-only; populated by Fetch Live Data / auto-fetch)
+    current_price = st.session_state.get("current_price", 440.0)
+    current_debit_to_close = st.session_state.get("current_debit_to_close", 0.40)
+    net_delta = st.session_state.get("net_delta", 0.20)
+    net_theta = st.session_state.get("net_theta", 3.50)
+    net_vega = st.session_state.get("net_vega", -0.40)
+    current_iv = st.session_state.get("current_iv", 22.0)
+
     # Derived metrics
     dte = compute_dte(expiration_date)
     current_profit, profit_pct = compute_profit_metrics(entry_credit, current_debit_to_close)
@@ -1235,7 +1186,7 @@ def main():
     price_near_short = is_price_near_short_strike(current_price, short_put_strike)
 
     # --- Top Metrics Row ---
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
 
     with col1:
         st.metric(
@@ -1250,11 +1201,21 @@ def main():
         )
     with col3:
         st.metric(
+            label="Current Underlying Price",
+            value=f"${current_price:,.2f}",
+        )
+    with col4:
+        st.metric(
+            label="Current IV",
+            value=f"{current_iv:.1f}%",
+        )
+    with col5:
+        st.metric(
             label="IV Change",
             value=f"{current_iv:.1f}%",
             delta=f"{iv_change:+.1f}%",
         )
-    with col4:
+    with col6:
         st.metric(
             label="Net Delta / Theta",
             value=f"{net_delta:.2f}",
