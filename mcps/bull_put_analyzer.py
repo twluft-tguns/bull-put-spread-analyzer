@@ -670,6 +670,7 @@ def main():
         st.session_state["net_vega"] = float(data.get("net_vega") or 0.0)
         st.session_state["current_iv"] = float(data.get("current_iv") or 0.0)
         st.session_state["iv_at_entry"] = float(data.get("iv_at_entry") or 0.0)
+        st.session_state["iv_at_entry_baseline"] = float(data.get("iv_at_entry") or 0.0)
         st.session_state["notes"] = data.get("notes") or ""
 
     # --- Sidebar: Inputs ---
@@ -1131,6 +1132,8 @@ def main():
             format="%.2f",
             key="iv_at_entry",
         )
+        # So the right side always uses this run's value (baseline for IV Change)
+        st.session_state["iv_at_entry_baseline"] = iv_at_entry
 
         notes = st.text_area(
             "Notes / Context",
@@ -1211,8 +1214,8 @@ def main():
     net_theta = st.session_state.get("net_theta", 3.50)
     net_vega = st.session_state.get("net_vega", -0.40)
     current_iv = st.session_state.get("current_iv", 22.0)
-    # IV at entry: use the sidebar widget value so the right side always matches what you see in Manual Entry
-    # (iv_at_entry was set by st.number_input in the sidebar above)
+    # IV at entry: baseline for IV Change = exactly what's in the left sidebar "IV at Entry (%)" field
+    iv_at_entry = st.session_state.get("iv_at_entry_baseline", st.session_state.get("iv_at_entry", 25.0))
 
     # Derived metrics
     dte = compute_dte(expiration_date)
