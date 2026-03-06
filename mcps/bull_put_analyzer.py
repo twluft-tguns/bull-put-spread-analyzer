@@ -639,6 +639,7 @@ def main():
                 exchange_code_for_token(code)
                 # Clear code from URL on next run
                 st.query_params.clear()
+                st.session_state["auto_fetch_live_on_connect"] = True
             except Exception as e:
                 st.session_state["schwab_auth_error"] = str(e)
         # Stay logged in: restore token from file if not in session
@@ -646,6 +647,7 @@ def main():
             loaded = load_schwab_token()
             if loaded and loaded.get("access_token"):
                 st.session_state["schwab_token"] = loaded
+                st.session_state["auto_fetch_live_on_connect"] = True
 
     # Apply any pending loaded trade data BEFORE widgets are created
     if "loaded_trade_data" in st.session_state:
@@ -772,6 +774,33 @@ def main():
             if "schwab_auth_error" in st.session_state:
                 st.error(f"Auth error: {st.session_state['schwab_auth_error']}")
             if "schwab_token" in st.session_state:
+                # Auto-fetch live data once as soon as we connect (no button click needed)
+                if st.session_state.get("auto_fetch_live_on_connect"):
+                    try:
+                        ticker_s = st.session_state.get("ticker", "SPY")
+                        exp = st.session_state.get("expiration_date") or datetime.date.today() + datetime.timedelta(days=30)
+                        short_s = st.session_state.get("short_put_strike") or 430.0
+                        long_s = st.session_state.get("long_put_strike") or 420.0
+                        live = fetch_schwab_live_data(ticker_s, exp, short_s, long_s)
+                        live_looks_empty = (
+                            (live.get("current_price") or 0) == 0
+                            and (live.get("current_debit_to_close") or 0) == 0
+                            and (live.get("net_delta") or 0) == 0
+                            and (live.get("net_theta") or 0) == 0
+                            and (live.get("net_vega") or 0) == 0
+                            and (live.get("current_iv") or 0) == 0
+                        )
+                        if not live_looks_empty:
+                            st.session_state["current_price"] = live["current_price"]
+                            st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
+                            st.session_state["net_delta"] = live["net_delta"]
+                            st.session_state["net_theta"] = live["net_theta"]
+                            st.session_state["net_vega"] = live["net_vega"]
+                            st.session_state["current_iv"] = live["current_iv"]
+                    except Exception:
+                        pass
+                    st.session_state.pop("auto_fetch_live_on_connect", None)
+                    st.rerun()
                 # Auto-refresh: when timer fired, fetch live data and optionally send Telegram alert
                 if st.session_state.get("auto_fetch_due"):
                     try:
