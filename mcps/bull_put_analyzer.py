@@ -1212,8 +1212,8 @@ def main():
     with col5:
         st.metric(
             label="IV Change",
-            value=f"{current_iv:.1f}%",
-            delta=f"{iv_change:+.1f}%",
+            value=f"{iv_change:+.1f}%",
+            delta=f"from {iv_at_entry:.1f}% at entry",
         )
     with col6:
         st.metric(
