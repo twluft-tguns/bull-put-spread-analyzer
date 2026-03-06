@@ -1211,8 +1211,8 @@ def main():
     net_theta = st.session_state.get("net_theta", 3.50)
     net_vega = st.session_state.get("net_vega", -0.40)
     current_iv = st.session_state.get("current_iv", 22.0)
-    # IV at entry: from Manual Entry / saved trade only (never overwritten by live fetch)
-    iv_at_entry = st.session_state.get("iv_at_entry", 25.0)
+    # IV at entry: use the sidebar widget value so the right side always matches what you see in Manual Entry
+    # (iv_at_entry was set by st.number_input in the sidebar above)
 
     # Derived metrics
     dte = compute_dte(expiration_date)
