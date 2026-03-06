@@ -801,6 +801,7 @@ def main():
                             st.session_state["current_iv"] = live["current_iv"]
                     except Exception:
                         pass
+                    st.session_state["last_live_fetch_time"] = time.time()
                     st.session_state.pop("auto_fetch_live_on_connect", None)
                     st.rerun()
                 # Auto-refresh: when timer fired, fetch live data and optionally send Telegram alert
@@ -847,7 +848,36 @@ def main():
                                 )
                     except Exception:
                         pass
+                    st.session_state["last_live_fetch_time"] = time.time()
                     st.session_state.pop("auto_fetch_due", None)
+
+                # Keep live data fresh: when connected, fetch if we haven't in the last 60 seconds (no button click)
+                last_fetch = st.session_state.get("last_live_fetch_time")
+                if last_fetch is None or (time.time() - last_fetch > 60):
+                    try:
+                        ticker_s = st.session_state.get("ticker", "SPY")
+                        exp = st.session_state.get("expiration_date") or datetime.date.today() + datetime.timedelta(days=30)
+                        short_s = st.session_state.get("short_put_strike") or 430.0
+                        long_s = st.session_state.get("long_put_strike") or 420.0
+                        live = fetch_schwab_live_data(ticker_s, exp, short_s, long_s)
+                        live_looks_empty = (
+                            (live.get("current_price") or 0) == 0
+                            and (live.get("current_debit_to_close") or 0) == 0
+                            and (live.get("net_delta") or 0) == 0
+                            and (live.get("net_theta") or 0) == 0
+                            and (live.get("net_vega") or 0) == 0
+                            and (live.get("current_iv") or 0) == 0
+                        )
+                        if not live_looks_empty:
+                            st.session_state["current_price"] = live["current_price"]
+                            st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
+                            st.session_state["net_delta"] = live["net_delta"]
+                            st.session_state["net_theta"] = live["net_theta"]
+                            st.session_state["net_vega"] = live["net_vega"]
+                            st.session_state["current_iv"] = live["current_iv"]
+                        st.session_state["last_live_fetch_time"] = time.time()
+                    except Exception:
+                        pass
 
                 st.success("Connected to Schwab (token stored for this session).")
                 if st.button("Disconnect Schwab"):
@@ -904,6 +934,7 @@ def main():
                             st.session_state["net_theta"] = live["net_theta"]
                             st.session_state["net_vega"] = live["net_vega"]
                             st.session_state["current_iv"] = live["current_iv"]
+                            st.session_state["last_live_fetch_time"] = time.time()
                             st.success("Live data loaded.")
                         # Restore form values so DTE and strikes don't reset on rerun
                         if saved_expiration is not None:
