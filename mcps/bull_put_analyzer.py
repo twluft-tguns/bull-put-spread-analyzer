@@ -590,12 +590,14 @@ def fetch_schwab_live_data(
     net_theta = -short_theta + long_theta
     net_vega = -short_vega + long_vega
 
-    # IV: QuoteOption.volatility (often decimal 0.22 = 22%)
-    short_iv = greek(short_c, "volatility")
-    if 0 < short_iv < 2:
-        current_iv = short_iv * 100
+    # IV: try both "volatility" and "impliedVolatility"; normalize to percent (API may return decimal 0.22 or percent 22)
+    short_iv = greek(short_c, "volatility") or greek(short_c, "impliedVolatility")
+    if short_iv and 0 < short_iv < 2:
+        current_iv = short_iv * 100  # decimal (0.22) -> percent
+    elif short_iv:
+        current_iv = short_iv  # already percent
     else:
-        current_iv = short_iv
+        current_iv = 0.0
 
     # OptionChain: underlyingPrice at root; underlying: Underlying{} may have lastPrice, markPrice, etc.
     underlying = data.get("underlying") or {}
@@ -1178,6 +1180,8 @@ def main():
     net_theta = st.session_state.get("net_theta", 3.50)
     net_vega = st.session_state.get("net_vega", -0.40)
     current_iv = st.session_state.get("current_iv", 22.0)
+    # IV at entry: from Manual Entry / saved trade only (never overwritten by live fetch)
+    iv_at_entry = st.session_state.get("iv_at_entry", 25.0)
 
     # Derived metrics
     dte = compute_dte(expiration_date)
@@ -1206,14 +1210,14 @@ def main():
         )
     with col4:
         st.metric(
-            label="Current IV",
-            value=f"{current_iv:.1f}%",
+            label="Current IV (live)",
+            value=f"{current_iv:.2f}%",
         )
     with col5:
         st.metric(
             label="IV Change",
-            value=f"{iv_change:+.1f}%",
-            delta=f"from {iv_at_entry:.1f}% at entry",
+            value=f"{iv_change:+.2f}%",
+            delta=f"from {iv_at_entry:.2f}% at entry",
         )
     with col6:
         st.metric(
@@ -1263,7 +1267,7 @@ def main():
         )
         st.write(
             f"- **Net greeks**: Δ {net_delta:.2f}, Θ {net_theta:.2f}, Vega {net_vega:.2f}  "
-            f"- **IV now / entry**: {current_iv:.1f}% / {iv_at_entry:.1f}%"
+            f"- **IV now (live) / IV at entry**: {current_iv:.2f}% / {iv_at_entry:.2f}%"
         )
         if price_near_short:
             st.write(
