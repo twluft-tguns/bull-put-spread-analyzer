@@ -11,3 +11,8 @@ venv/
 
 # Local saved trades fallback
 saved_trades.json
+
+# Monitor / Task Scheduler secrets (do not commit)
+.env
+schwab_token.json
+monitor_last_alert.json

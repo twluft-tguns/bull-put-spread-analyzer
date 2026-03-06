@@ -1,0 +1,8 @@
+[browser]
+# Skip the first-run email prompt so the app starts without hanging in PowerShell
+gatherUsageStats = false
+showEmailPrompt = false
+
+[server]
+# Run without blocking on terminal prompts (browser still opens)
+headless = true

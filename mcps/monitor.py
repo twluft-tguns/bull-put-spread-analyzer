@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
 Background monitor for Bull Put Spread Analyzer.
-Run this script to stay logged into Schwab and get Telegram alerts when a saved trade
-recommends "Close Now" or "Close Now or Roll". Uses the same token file as the app.
+Runs during market hours (9:30 AM–4:00 PM ET, weekdays). Exits at market close so Task Scheduler
+can start it again next morning. Sends Telegram alerts when a saved trade recommends
+"Close Now" or "Close Now or Roll". Uses the same token file as the app.
 
 Setup:
-  1. Log in once via the Streamlit app so schwab_token.json exists.
-  2. Set env (or .env): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
-     Optional: SCHWAB_TOKEN_FILE (default: ./schwab_token.json), TRADES_FILE (default: ./saved_trades.json),
-     SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for cloud trades, INTERVAL_MINUTES (default: 5).
-  3. Run: python -m mcps.monitor   (or python mcps/monitor.py from project root)
+  1. Log in once via the Streamlit app so schwab_token.json exists in project root.
+  2. Create a .env file in project root (see .env.example) with TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+     SCHWAB_CLIENT_ID, SCHWAB_CLIENT_SECRET. Optional: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
+  3. Run: python -m mcps.monitor   (or use run_monitor.bat + Task Scheduler for automatic runs)
 
 Alerts are rate-limited to once per trade per 30 minutes.
 """
@@ -23,8 +23,19 @@ import os
 import time
 import uuid
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
+
+# Load .env from project root so Task Scheduler / batch run don't need to set env vars
+_project_root = Path(__file__).resolve().parent.parent
+_env_file = _project_root / ".env"
+if _env_file.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_file)
+    except ImportError:
+        pass
 
 # Use same token file as the Streamlit app
 SCHWAB_TOKEN_FILE = Path(os.environ.get("SCHWAB_TOKEN_FILE", "schwab_token.json"))
@@ -197,7 +208,7 @@ def get_recommendation(
     price_near_short: bool,
 ) -> str:
     """Return recommendation string (e.g. '✅ Close Now')."""
-    from bull_put_analyzer import get_recommendation as _rec
+    from mcps.bull_put_analyzer import get_recommendation as _rec
 
     rec, _, _ = _rec(dte, profit_pct, current_profit, net_delta, net_theta, iv_change, price_near_short)
     return rec
@@ -281,7 +292,7 @@ def send_telegram(text: str) -> bool:
 
 
 def run_once(access_token: str) -> None:
-    from bull_put_analyzer import (
+    from mcps.bull_put_analyzer import (
         compute_dte,
         compute_profit_metrics,
         compute_iv_change,
@@ -330,11 +341,49 @@ def run_once(access_token: str) -> None:
             print(f"Alert sent: {label}")
 
 
+def _now_et() -> datetime.datetime:
+    return datetime.datetime.now(ZoneInfo("America/New_York"))
+
+
+def _is_market_hours(now_et: datetime.datetime) -> bool:
+    """True if weekday and between 9:30 AM and 4:00 PM ET."""
+    if now_et.weekday() >= 5:  # Saturday, Sunday
+        return False
+    if now_et.hour < 9:
+        return False
+    if now_et.hour == 9 and now_et.minute < 30:
+        return False
+    if now_et.hour >= 16:
+        return False
+    return True
+
+
+def _sleep_until_market_open(now_et: datetime.datetime) -> None:
+    """Sleep until next 9:30 AM ET (weekday)."""
+    target = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    if now_et >= target:
+        target += datetime.timedelta(days=1)
+    while target.weekday() >= 5:
+        target += datetime.timedelta(days=1)
+    delta = target - _now_et()
+    secs = max(0, int(delta.total_seconds()))
+    if secs > 0:
+        print(f"Market closed. Next open: {target.strftime('%Y-%m-%d %H:%M')} ET. Sleeping {secs}s.")
+        time.sleep(secs)
+
+
 def main() -> None:
-    print("Bull Put Spread Monitor – Telegram alerts for Close Now. Ctrl+C to stop.")
+    print("Bull Put Spread Monitor – Telegram alerts for Close Now. Runs market hours (9:30 AM–4 PM ET) only. Ctrl+C to stop.")
     if not os.environ.get("TELEGRAM_BOT_TOKEN") or not os.environ.get("TELEGRAM_CHAT_ID"):
-        print("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (or add [telegram] in app secrets).")
+        print("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env or environment.")
     while True:
+        now_et = _now_et()
+        if not _is_market_hours(now_et):
+            if now_et.hour >= 16 or now_et.weekday() >= 5:
+                print(f"Market closed ({now_et.strftime('%Y-%m-%d %H:%M')} ET). Exiting until next run.")
+                break
+            _sleep_until_market_open(now_et)
+            continue
         try:
             token = get_access_token()
             run_once(token)
