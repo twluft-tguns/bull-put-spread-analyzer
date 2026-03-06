@@ -908,6 +908,7 @@ def main():
                         saved_expiration = st.session_state.get("expiration_date")
                         saved_short = st.session_state.get("short_put_strike")
                         saved_long = st.session_state.get("long_put_strike")
+                        saved_iv_at_entry = st.session_state.get("iv_at_entry")
                         live = fetch_schwab_live_data(
                             st.session_state["ticker"],
                             saved_expiration or datetime.date.today() + datetime.timedelta(days=30),
@@ -944,6 +945,9 @@ def main():
                             st.session_state["short_put_strike"] = saved_short
                         if saved_long is not None:
                             st.session_state["long_put_strike"] = saved_long
+                        if saved_iv_at_entry is not None:
+                            st.session_state["iv_at_entry"] = saved_iv_at_entry
+                            st.session_state["iv_at_entry_baseline"] = saved_iv_at_entry
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
