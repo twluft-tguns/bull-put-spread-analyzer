@@ -1044,114 +1044,6 @@ def main():
                 )
 
         st.markdown("---")
-        st.markdown("#### 📝 Manual entry")
-        st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by Fetch Live Data.")
-        ticker = st.text_input("Underlying Ticker", value=st.session_state.get("ticker", "SPY"), key="ticker")
-
-        col_strikes = st.columns(2)
-        with col_strikes[0]:
-            short_put_strike = st.number_input(
-                "Short Put Strike",
-                min_value=0.0,
-                value=st.session_state.get("short_put_strike", 430.0),
-                step=1.0,
-                key="short_put_strike",
-            )
-        with col_strikes[1]:
-            long_put_strike = st.number_input(
-                "Long Put Strike",
-                min_value=0.0,
-                value=st.session_state.get("long_put_strike", 420.0),
-                step=1.0,
-                key="long_put_strike",
-            )
-
-        default_expiration = datetime.date.today() + datetime.timedelta(days=30)
-        expiration_date = st.date_input(
-            "Expiration Date",
-            value=st.session_state.get("expiration_date", default_expiration),
-            key="expiration_date",
-        )
-
-        entry_credit = st.number_input(
-            "Entry Credit Received (per spread)",
-            min_value=0.0,
-            value=st.session_state.get("entry_credit", 2.00),
-            step=0.05,
-            format="%.2f",
-            key="entry_credit",
-        )
-
-        iv_at_entry = st.number_input(
-            "IV at Entry (%)",
-            min_value=0.0,
-            max_value=200.0,
-            value=st.session_state.get("iv_at_entry", 25.0),
-            step=0.5,
-            format="%.2f",
-            key="iv_at_entry",
-        )
-        # So the right side always uses this run's value (baseline for IV Change)
-        st.session_state["iv_at_entry_baseline"] = iv_at_entry
-
-        notes = st.text_area(
-            "Notes / Context",
-            value=st.session_state.get("notes", "e.g., broader market trend, support/resistance levels, earnings dates, etc."),
-            height=120,
-            key="notes",
-        )
-
-        # Big red Save Trade button: save manual entry to the trade selected in the dropdown
-        st.markdown(
-            """
-            <style>
-            section[data-testid="stSidebar"] [data-testid="baseButton-primary"] {
-                background-color: #c62828 !important;
-                font-size: 1.05rem !important;
-                font-weight: 600 !important;
-                padding: 0.5rem 1rem !important;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
-        current_trade_label = (st.session_state.get("trade_label") or "").strip()
-        save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
-        if st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual"):
-            if save_target:
-                # Merge manual entry into existing trade so we don't wipe live data
-                existing = dict(saved_trades.get(save_target, {})) if save_target in saved_trades else {}
-                payload = {
-                    **existing,
-                    "ticker": ticker,
-                    "short_put_strike": short_put_strike,
-                    "long_put_strike": long_put_strike,
-                    "expiration_date": str(expiration_date),
-                    "entry_credit": entry_credit,
-                    "iv_at_entry": iv_at_entry,
-                    "notes": notes,
-                }
-                # New trade: include live fields from session so payload is complete
-                if save_target not in saved_trades:
-                    payload["current_price"] = st.session_state.get("current_price", 440.0)
-                    payload["current_debit_to_close"] = st.session_state.get("current_debit_to_close", 0.40)
-                    payload["net_delta"] = st.session_state.get("net_delta", 0.20)
-                    payload["net_theta"] = st.session_state.get("net_theta", 3.50)
-                    payload["net_vega"] = st.session_state.get("net_vega", -0.40)
-                    payload["current_iv"] = st.session_state.get("current_iv", 22.0)
-                try:
-                    upsert_trade(workspace_key, save_target, payload)
-                    st.success(f"Saved manual entry to '{save_target}' (IV at Entry {iv_at_entry}%)")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Save failed: {e}")
-            else:
-                st.warning("Select a trade in the dropdown above to save to, or enter a new trade name.")
-
-        st.markdown("---")
-        # Live data comes from Fetch Live Data / auto-fetch only (read-only; no inputs here)
-        # Values are in session state and shown in the main area.
 
         # Non-blocking auto-refresh timer (no long greyed-out spinner)
         if st.session_state.get("auto_refresh") and "schwab_token" in st.session_state:
@@ -1171,50 +1063,142 @@ def main():
     )
     st.caption("Quickly evaluate whether to close, hold, or roll your bull put spread based on profit, DTE, greeks, and volatility.")
 
-    # Saved trades section on the right, directly below title/caption
-    _, saved_trades_col = st.columns([1.25, 1.0])
-    with saved_trades_col:
-        st.markdown("#### Saved Trades")
-        st.text_input("Trade Name / Label", key="trade_label")
-        load_options = ["(none)"] + list(saved_trades.keys())
-        if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
-            default_load_index = load_options.index(st.session_state["trade_to_load"])
-        elif saved_trades:
-            default_load_index = 1
-        else:
-            default_load_index = 0
-        trade_to_load = st.selectbox(
-            "Load Trade",
-            options=load_options,
-            index=default_load_index,
-            key="trade_to_load",
-        )
+    # Right-side top panel: Saved Trades (left) and Manual Entry (right)
+    _, right_top_panel = st.columns([1.1, 1.4])
+    with right_top_panel:
+        saved_trades_col, manual_entry_col = st.columns([1.0, 1.15])
 
-        if (
-            saved_trades
-            and trade_to_load != "(none)"
-            and trade_to_load == load_options[1]
-            and st.session_state.get("last_auto_load_workspace") != workspace_key
-        ):
-            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
-            st.session_state["last_auto_load_workspace"] = workspace_key
-            st.rerun()
+        with saved_trades_col:
+            st.markdown("#### Saved Trades")
+            st.text_input("Trade Name / Label", key="trade_label")
+            load_options = ["(none)"] + list(saved_trades.keys())
+            if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
+                default_load_index = load_options.index(st.session_state["trade_to_load"])
+            elif saved_trades:
+                default_load_index = 1
+            else:
+                default_load_index = 0
+            trade_to_load = st.selectbox(
+                "Load Trade",
+                options=load_options,
+                index=default_load_index,
+                key="trade_to_load",
+            )
 
-        col_load_btn, col_del_btn = st.columns(2)
-        with col_load_btn:
-            if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade", key="apply_loaded_trade_main"):
+            if (
+                saved_trades
+                and trade_to_load != "(none)"
+                and trade_to_load == load_options[1]
+                and st.session_state.get("last_auto_load_workspace") != workspace_key
+            ):
                 st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+                st.session_state["last_auto_load_workspace"] = workspace_key
                 st.rerun()
-        with col_del_btn:
-            if st.button("🗑️ Delete", key="delete_trade_main"):
-                if trade_to_load != "(none)":
+
+            col_load_btn, col_del_btn = st.columns(2)
+            with col_load_btn:
+                if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade", key="apply_loaded_trade_main"):
+                    st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+                    st.rerun()
+            with col_del_btn:
+                if st.button("🗑️ Delete", key="delete_trade_main"):
+                    if trade_to_load != "(none)":
+                        try:
+                            delete_trade(workspace_key, trade_to_load)
+                            st.success(f"Deleted '{trade_to_load}'")
+                            st.session_state["trade_to_load"] = "(none)"
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Delete failed: {e}")
+
+        with manual_entry_col:
+            st.markdown("#### 📝 Manual Entry")
+            st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by live fetch.")
+            ticker = st.text_input("Underlying Ticker", value=st.session_state.get("ticker", "SPY"), key="ticker")
+
+            col_strikes = st.columns(2)
+            with col_strikes[0]:
+                short_put_strike = st.number_input(
+                    "Short Put Strike",
+                    min_value=0.0,
+                    value=st.session_state.get("short_put_strike", 430.0),
+                    step=1.0,
+                    key="short_put_strike",
+                )
+            with col_strikes[1]:
+                long_put_strike = st.number_input(
+                    "Long Put Strike",
+                    min_value=0.0,
+                    value=st.session_state.get("long_put_strike", 420.0),
+                    step=1.0,
+                    key="long_put_strike",
+                )
+
+            default_expiration = datetime.date.today() + datetime.timedelta(days=30)
+            expiration_date = st.date_input(
+                "Expiration Date",
+                value=st.session_state.get("expiration_date", default_expiration),
+                key="expiration_date",
+            )
+
+            entry_credit = st.number_input(
+                "Entry Credit Received (per spread)",
+                min_value=0.0,
+                value=st.session_state.get("entry_credit", 2.00),
+                step=0.05,
+                format="%.2f",
+                key="entry_credit",
+            )
+
+            iv_at_entry = st.number_input(
+                "IV at Entry (%)",
+                min_value=0.0,
+                max_value=200.0,
+                value=st.session_state.get("iv_at_entry", 25.0),
+                step=0.5,
+                format="%.2f",
+                key="iv_at_entry",
+            )
+            st.session_state["iv_at_entry_baseline"] = iv_at_entry
+
+            notes = st.text_area(
+                "Notes / Context",
+                value=st.session_state.get("notes", "e.g., broader market trend, support/resistance levels, earnings dates, etc."),
+                height=120,
+                key="notes",
+            )
+
+            current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
+            current_trade_label = (st.session_state.get("trade_label") or "").strip()
+            save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
+            if st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual"):
+                if save_target:
+                    existing = dict(saved_trades.get(save_target, {})) if save_target in saved_trades else {}
+                    payload = {
+                        **existing,
+                        "ticker": ticker,
+                        "short_put_strike": short_put_strike,
+                        "long_put_strike": long_put_strike,
+                        "expiration_date": str(expiration_date),
+                        "entry_credit": entry_credit,
+                        "iv_at_entry": iv_at_entry,
+                        "notes": notes,
+                    }
+                    if save_target not in saved_trades:
+                        payload["current_price"] = st.session_state.get("current_price", 440.0)
+                        payload["current_debit_to_close"] = st.session_state.get("current_debit_to_close", 0.40)
+                        payload["net_delta"] = st.session_state.get("net_delta", 0.20)
+                        payload["net_theta"] = st.session_state.get("net_theta", 3.50)
+                        payload["net_vega"] = st.session_state.get("net_vega", -0.40)
+                        payload["current_iv"] = st.session_state.get("current_iv", 22.0)
                     try:
-                        delete_trade(workspace_key, trade_to_load)
-                        st.success(f"Deleted '{trade_to_load}'")
-                        st.session_state["trade_to_load"] = "(none)"
+                        upsert_trade(workspace_key, save_target, payload)
+                        st.success(f"Saved manual entry to '{save_target}' (IV at Entry {iv_at_entry}%)")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Delete failed: {e}")
+                        st.error(f"Save failed: {e}")
+                else:
+                    st.warning("Select a trade in the dropdown to save to, or enter a new trade name.")
 
     # Live data from Schwab (read-only; populated by Fetch Live Data / auto-fetch)
     current_price = st.session_state.get("current_price", 440.0)
