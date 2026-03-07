@@ -1095,7 +1095,13 @@ def main():
 
     with saved_trades_col:
         st.markdown("#### Saved Trades")
-        st.text_input("Trade Name / Label", key="trade_label")
+        trade_label_value = st.text_input("Trade Name / Label", key="trade_label")
+        previous_trade_label = st.session_state.get("last_trade_label_value", "")
+        if trade_label_value != previous_trade_label:
+            st.session_state["last_trade_label_value"] = trade_label_value
+            if trade_label_value.strip() and st.session_state.get("trade_to_load", "(none)") != "(none)":
+                st.session_state["trade_to_load"] = "(none)"
+                st.rerun()
         load_options = ["(none)"] + list(saved_trades.keys())
         if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
             default_load_index = load_options.index(st.session_state["trade_to_load"])
