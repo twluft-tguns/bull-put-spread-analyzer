@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 import requests
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 TRADES_FILE = Path("saved_trades.json")
 # Persist Schwab OAuth token so user stays logged in across refreshes
@@ -952,12 +953,14 @@ def main():
                     except Exception as e:
                         st.error(str(e))
                 # Auto-refresh: continuously pull live data and alert via Telegram when Close Now
+                prev_auto_refresh = st.session_state.get("auto_refresh_prev", False)
                 auto_refresh = st.checkbox(
                     "Auto-refresh live data",
                     value=st.session_state.get("auto_refresh", False),
                     key="auto_refresh",
                     help="Refresh live data at the chosen interval and get Telegram alerts when recommendation is Close Now.",
                 )
+                st.session_state["auto_refresh_prev"] = auto_refresh
                 if auto_refresh:
                     interval_min = st.selectbox(
                         "Refresh interval (minutes)",
@@ -969,6 +972,11 @@ def main():
                         st.caption("Telegram alerts enabled for Close Now / Close Now or Roll.")
                     else:
                         st.caption("Add [telegram] bot_token and chat_id in secrets for alerts. For alerts when the app is closed, run: python -m mcps.monitor")
+                    if not prev_auto_refresh:
+                        st.session_state["auto_fetch_due"] = True
+                        st.rerun()
+                else:
+                    st.session_state.pop("last_live_autorefresh_tick", None)
             else:
                 auth_url = build_schwab_auth_url()
                 st.markdown(
@@ -1196,13 +1204,16 @@ def main():
         # Live data comes from Fetch Live Data / auto-fetch only (read-only; no inputs here)
         # Values are in session state and shown in the main area.
 
-        # Auto-refresh timer: sleep then rerun to trigger live fetch and Telegram alert
+        # Non-blocking auto-refresh timer (no long greyed-out spinner)
         if st.session_state.get("auto_refresh") and "schwab_token" in st.session_state:
             interval_sec = int(st.session_state.get("auto_refresh_interval", 1)) * 60
-            with st.spinner(f"Next refresh in {interval_sec}s…"):
-                time.sleep(interval_sec)
-            st.session_state["auto_fetch_due"] = True
-            st.rerun()
+            tick = st_autorefresh(interval=interval_sec * 1000, key="live_data_autorefresh_timer")
+            last_tick = st.session_state.get("last_live_autorefresh_tick", -1)
+            if tick != last_tick:
+                st.session_state["last_live_autorefresh_tick"] = tick
+                if tick > 0:
+                    st.session_state["auto_fetch_due"] = True
+                    st.rerun()
 
     # --- Main Layout ---
     st.markdown(
