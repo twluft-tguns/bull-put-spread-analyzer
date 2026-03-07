@@ -1115,6 +1115,11 @@ def main():
         manual_left_col, manual_right_col = st.columns(2, gap="large")
         with manual_left_col:
             ticker = st.text_input("Underlying Ticker", value=st.session_state.get("ticker", "SPY"), key="ticker")
+                normalized_ticker = (ticker or "").upper()
+                if normalized_ticker != ticker:
+                    st.session_state["ticker"] = normalized_ticker
+                    st.rerun()
+                ticker = normalized_ticker
 
             col_strikes = st.columns(2)
             with col_strikes[0]:
