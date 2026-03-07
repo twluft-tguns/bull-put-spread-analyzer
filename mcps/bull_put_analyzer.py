@@ -765,11 +765,68 @@ def main():
             except Exception:
                 pass
 
-        st.markdown(
-            "<h2 style='margin-bottom: 0.5rem;'>Bull Put Spread Inputs</h2>",
-            unsafe_allow_html=True,
-        )
-        st.caption("Analyze your bull put spread and get a clear exit recommendation.")
+        st.markdown("#### Profile")
+        if has_supabase_config():
+            st.success("Cloud storage enabled (Supabase).")
+        else:
+            st.warning("Cloud storage not configured. Using local file storage.")
+
+        known_keys = list_workspace_keys()
+        ensure_workspace_key(known_keys)
+
+        if known_keys:
+            options = known_keys + ["(Add new...)"]
+            current_key = (st.session_state.get("workspace_key") or "").strip()
+            try:
+                default_index = options.index(current_key) if current_key in options else 0
+            except ValueError:
+                default_index = 0
+            sel = st.selectbox(
+                "Workspace Key (keep this private)",
+                options=options,
+                index=default_index,
+                key="workspace_key_select",
+                help="Select a workspace or add a new one. Your saved trades are grouped by workspace.",
+            )
+            if sel == "(Add new...)":
+                new_key = st.text_input(
+                    "New workspace key",
+                    value="",
+                    key="workspace_key_new",
+                    placeholder="Type a new key and save a trade to add it to the list",
+                )
+                workspace_key = (new_key or "").strip() or known_keys[0]
+            else:
+                workspace_key = sel
+            st.session_state["workspace_key"] = workspace_key
+        else:
+            workspace_key = st.text_input(
+                "Workspace Key (keep this private)",
+                value=st.session_state.get("workspace_key", ""),
+                key="workspace_key",
+                help="This key separates your saved trades from other users. Save a trade to create your first workspace.",
+            )
+
+        # Keep URL in sync so the key survives reruns (e.g. after Fetch Live Data).
+        if workspace_key:
+            try:
+                q = st.query_params
+                current = q.get("workspace_key") if hasattr(q, "get") else None
+                if isinstance(current, list):
+                    current = current[0] if current else None
+                if current != workspace_key:
+                    st.query_params["workspace_key"] = workspace_key
+            except Exception:
+                pass
+
+        # Load saved trades data for save/update operations
+        try:
+            saved_trades = list_trades(workspace_key)
+        except Exception as e:
+            saved_trades = {}
+            st.error(f"Could not load saved trades: {e}")
+
+        st.markdown("---")
 
         st.markdown("#### Schwab Connection")
         if not has_schwab_config():
@@ -986,116 +1043,6 @@ def main():
                     unsafe_allow_html=True,
                 )
 
-        st.markdown("#### Trade Storage")
-        if has_supabase_config():
-            st.success("Cloud storage enabled (Supabase).")
-        else:
-            st.warning("Cloud storage not configured. Using local file storage.")
-
-        known_keys = list_workspace_keys()
-        ensure_workspace_key(known_keys)
-
-        if known_keys:
-            options = known_keys + ["(Add new...)"]
-            current_key = (st.session_state.get("workspace_key") or "").strip()
-            try:
-                default_index = options.index(current_key) if current_key in options else 0
-            except ValueError:
-                default_index = 0
-            sel = st.selectbox(
-                "Workspace Key (keep this private)",
-                options=options,
-                index=default_index,
-                key="workspace_key_select",
-                help="Select a workspace or add a new one. Your saved trades are grouped by workspace.",
-            )
-            if sel == "(Add new...)":
-                new_key = st.text_input(
-                    "New workspace key",
-                    value="",
-                    key="workspace_key_new",
-                    placeholder="Type a new key and save a trade to add it to the list",
-                )
-                workspace_key = (new_key or "").strip() or known_keys[0]
-            else:
-                workspace_key = sel
-            st.session_state["workspace_key"] = workspace_key
-        else:
-            workspace_key = st.text_input(
-                "Workspace Key (keep this private)",
-                value=st.session_state.get("workspace_key", ""),
-                key="workspace_key",
-                help="This key separates your saved trades from other users. Save a trade to create your first workspace.",
-            )
-
-        # Keep URL in sync so the key survives reruns (e.g. after Fetch Live Data).
-        if workspace_key:
-            try:
-                q = st.query_params
-                current = q.get("workspace_key") if hasattr(q, "get") else None
-                if isinstance(current, list):
-                    current = current[0] if current else None
-                if current != workspace_key:
-                    st.query_params["workspace_key"] = workspace_key
-            except Exception:
-                pass
-
-        # --- Saved Trades (above Manual entry) ---
-        st.markdown("---")
-        st.markdown("#### Saved Trades")
-
-        try:
-            saved_trades = list_trades(workspace_key)
-        except Exception as e:
-            saved_trades = {}
-            st.error(f"Could not load saved trades: {e}")
-
-        trade_label = st.text_input("Trade Name / Label", key="trade_label")
-
-        col_save, col_load, col_del = st.columns([1, 1, 1])
-
-        with col_save:
-            st.caption("Save after filling form below ↓")
-        with col_load:
-            load_options = ["(none)"] + list(saved_trades.keys())
-            if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
-                default_load_index = load_options.index(st.session_state["trade_to_load"])
-            elif saved_trades:
-                default_load_index = 1
-            else:
-                default_load_index = 0
-            trade_to_load = st.selectbox(
-                "Load Trade",
-                options=load_options,
-                index=default_load_index,
-                key="trade_to_load",
-            )
-
-            if (
-                saved_trades
-                and trade_to_load != "(none)"
-                and trade_to_load == load_options[1]
-                and st.session_state.get("last_auto_load_workspace") != workspace_key
-            ):
-                st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
-                st.session_state["last_auto_load_workspace"] = workspace_key
-                st.rerun()
-
-        with col_del:
-            if st.button("🗑️ Delete"):
-                if trade_to_load != "(none)":
-                    try:
-                        delete_trade(workspace_key, trade_to_load)
-                        st.success(f"Deleted '{trade_to_load}'")
-                        st.session_state["trade_to_load"] = "(none)"
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Delete failed: {e}")
-
-        if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade"):
-            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
-            st.rerun()
-
         st.markdown("---")
         st.markdown("#### 📝 Manual entry")
         st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by Fetch Live Data.")
@@ -1168,7 +1115,9 @@ def main():
             """,
             unsafe_allow_html=True,
         )
-        save_target = trade_to_load if trade_to_load != "(none)" else (trade_label.strip() or None)
+        current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
+        current_trade_label = (st.session_state.get("trade_label") or "").strip()
+        save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
         if st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual"):
             if save_target:
                 # Merge manual entry into existing trade so we don't wipe live data
@@ -1221,6 +1170,51 @@ def main():
         unsafe_allow_html=True,
     )
     st.caption("Quickly evaluate whether to close, hold, or roll your bull put spread based on profit, DTE, greeks, and volatility.")
+
+    # Saved trades section on the right, directly below title/caption
+    _, saved_trades_col = st.columns([1.25, 1.0])
+    with saved_trades_col:
+        st.markdown("#### Saved Trades")
+        st.text_input("Trade Name / Label", key="trade_label")
+        load_options = ["(none)"] + list(saved_trades.keys())
+        if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
+            default_load_index = load_options.index(st.session_state["trade_to_load"])
+        elif saved_trades:
+            default_load_index = 1
+        else:
+            default_load_index = 0
+        trade_to_load = st.selectbox(
+            "Load Trade",
+            options=load_options,
+            index=default_load_index,
+            key="trade_to_load",
+        )
+
+        if (
+            saved_trades
+            and trade_to_load != "(none)"
+            and trade_to_load == load_options[1]
+            and st.session_state.get("last_auto_load_workspace") != workspace_key
+        ):
+            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+            st.session_state["last_auto_load_workspace"] = workspace_key
+            st.rerun()
+
+        col_load_btn, col_del_btn = st.columns(2)
+        with col_load_btn:
+            if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade", key="apply_loaded_trade_main"):
+                st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+                st.rerun()
+        with col_del_btn:
+            if st.button("🗑️ Delete", key="delete_trade_main"):
+                if trade_to_load != "(none)":
+                    try:
+                        delete_trade(workspace_key, trade_to_load)
+                        st.success(f"Deleted '{trade_to_load}'")
+                        st.session_state["trade_to_load"] = "(none)"
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Delete failed: {e}")
 
     # Live data from Schwab (read-only; populated by Fetch Live Data / auto-fetch)
     current_price = st.session_state.get("current_price", 440.0)
