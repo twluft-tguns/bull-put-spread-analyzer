@@ -1064,9 +1064,9 @@ def main():
     st.caption("Quickly evaluate whether to close, hold, or roll your bull put spread based on profit, DTE, greeks, and volatility.")
 
     # Right-side top panel: Saved Trades (left) and Manual Entry (right)
-    _, right_top_panel = st.columns([1.1, 1.4])
+    _, right_top_panel = st.columns([1.0, 1.6])
     with right_top_panel:
-        saved_trades_col, manual_entry_col = st.columns([1.0, 1.15])
+        saved_trades_col, manual_entry_col = st.columns([1, 1], gap="large")
 
         with saved_trades_col:
             st.markdown("#### Saved Trades")
@@ -1114,64 +1114,69 @@ def main():
         with manual_entry_col:
             st.markdown("#### 📝 Manual Entry")
             st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by live fetch.")
-            ticker = st.text_input("Underlying Ticker", value=st.session_state.get("ticker", "SPY"), key="ticker")
+            manual_left_col, manual_right_col = st.columns(2, gap="large")
+            with manual_left_col:
+                ticker = st.text_input("Underlying Ticker", value=st.session_state.get("ticker", "SPY"), key="ticker")
 
-            col_strikes = st.columns(2)
-            with col_strikes[0]:
-                short_put_strike = st.number_input(
-                    "Short Put Strike",
-                    min_value=0.0,
-                    value=st.session_state.get("short_put_strike", 430.0),
-                    step=1.0,
-                    key="short_put_strike",
+                col_strikes = st.columns(2)
+                with col_strikes[0]:
+                    short_put_strike = st.number_input(
+                        "Short Put Strike",
+                        min_value=0.0,
+                        value=st.session_state.get("short_put_strike", 430.0),
+                        step=1.0,
+                        key="short_put_strike",
+                    )
+                with col_strikes[1]:
+                    long_put_strike = st.number_input(
+                        "Long Put Strike",
+                        min_value=0.0,
+                        value=st.session_state.get("long_put_strike", 420.0),
+                        step=1.0,
+                        key="long_put_strike",
+                    )
+
+                default_expiration = datetime.date.today() + datetime.timedelta(days=30)
+                expiration_date = st.date_input(
+                    "Expiration Date",
+                    value=st.session_state.get("expiration_date", default_expiration),
+                    key="expiration_date",
                 )
-            with col_strikes[1]:
-                long_put_strike = st.number_input(
-                    "Long Put Strike",
+
+            with manual_right_col:
+                entry_credit = st.number_input(
+                    "Entry Credit Received (per spread)",
                     min_value=0.0,
-                    value=st.session_state.get("long_put_strike", 420.0),
-                    step=1.0,
-                    key="long_put_strike",
+                    value=st.session_state.get("entry_credit", 2.00),
+                    step=0.05,
+                    format="%.2f",
+                    key="entry_credit",
                 )
 
-            default_expiration = datetime.date.today() + datetime.timedelta(days=30)
-            expiration_date = st.date_input(
-                "Expiration Date",
-                value=st.session_state.get("expiration_date", default_expiration),
-                key="expiration_date",
-            )
+                iv_at_entry = st.number_input(
+                    "IV at Entry (%)",
+                    min_value=0.0,
+                    max_value=200.0,
+                    value=st.session_state.get("iv_at_entry", 25.0),
+                    step=0.5,
+                    format="%.2f",
+                    key="iv_at_entry",
+                )
+                st.session_state["iv_at_entry_baseline"] = iv_at_entry
 
-            entry_credit = st.number_input(
-                "Entry Credit Received (per spread)",
-                min_value=0.0,
-                value=st.session_state.get("entry_credit", 2.00),
-                step=0.05,
-                format="%.2f",
-                key="entry_credit",
-            )
-
-            iv_at_entry = st.number_input(
-                "IV at Entry (%)",
-                min_value=0.0,
-                max_value=200.0,
-                value=st.session_state.get("iv_at_entry", 25.0),
-                step=0.5,
-                format="%.2f",
-                key="iv_at_entry",
-            )
-            st.session_state["iv_at_entry_baseline"] = iv_at_entry
-
-            notes = st.text_area(
-                "Notes / Context",
-                value=st.session_state.get("notes", "e.g., broader market trend, support/resistance levels, earnings dates, etc."),
-                height=120,
-                key="notes",
-            )
+                notes = st.text_area(
+                    "Notes / Context",
+                    value=st.session_state.get("notes", "e.g., broader market trend, support/resistance levels, earnings dates, etc."),
+                    height=120,
+                    key="notes",
+                )
 
             current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
             current_trade_label = (st.session_state.get("trade_label") or "").strip()
             save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
-            if st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual"):
+            with manual_right_col:
+                save_trade_clicked = st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual")
+            if save_trade_clicked:
                 if save_target:
                     existing = dict(saved_trades.get(save_target, {})) if save_target in saved_trades else {}
                     payload = {
