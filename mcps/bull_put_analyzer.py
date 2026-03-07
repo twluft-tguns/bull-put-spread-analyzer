@@ -674,6 +674,13 @@ def main():
         st.session_state["iv_at_entry_baseline"] = float(data.get("iv_at_entry") or 0.0)
         st.session_state["notes"] = data.get("notes") or ""
 
+    if "ticker" not in st.session_state:
+        st.session_state["ticker"] = "SPY"
+
+    def _normalize_ticker_input() -> None:
+        raw = st.session_state.get("ticker") or ""
+        st.session_state["ticker"] = "".join(ch for ch in raw.upper() if ch.isalpha())
+
     # --- Sidebar: Inputs ---
     with st.sidebar:
         # Entry fields: red inner border ONLY when empty; when there's a number (or content), red disappears.
@@ -729,17 +736,37 @@ def main():
         <script>
         (function() {
             function doc() { try { return window.parent && window.parent.document ? window.parent.document : document; } catch(e) { return document; } }
+            function forceTickerUppercase(inp) {
+                if (!inp) return;
+                var cleaned = (inp.value || '').toUpperCase().replace(/[^A-Z]/g, '');
+                if (cleaned === inp.value) return;
+                var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                setter.call(inp, cleaned);
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            function bindTickerUppercase(root) {
+                var tickerInputs = root.querySelectorAll('input[aria-label="Underlying Ticker"]');
+                tickerInputs.forEach(function(inp) {
+                    if (inp.dataset.tickerUpperBound === '1') return;
+                    inp.dataset.tickerUpperBound = '1';
+                    inp.addEventListener('input', function() { forceTickerUppercase(inp); });
+                    inp.addEventListener('change', function() { forceTickerUppercase(inp); });
+                    forceTickerUppercase(inp);
+                });
+            }
             function run() {
                 var root = doc();
                 var sidebar = root.querySelector('[data-testid="stSidebar"]');
-                if (!sidebar) return;
-                sidebar.querySelectorAll('[data-testid="stNumberInput"], [data-testid="stNumberinput"]').forEach(function(widget) {
-                    var input = widget.querySelector('input[type="number"]');
-                    if (!input) return;
-                    var val = input.value;
-                    var empty = val === '' || val === null || isNaN(parseFloat(val));
-                    if (empty) widget.classList.add('number-empty'); else widget.classList.remove('number-empty');
-                });
+                if (sidebar) {
+                    sidebar.querySelectorAll('[data-testid="stNumberInput"], [data-testid="stNumberinput"]').forEach(function(widget) {
+                        var input = widget.querySelector('input[type="number"]');
+                        if (!input) return;
+                        var val = input.value;
+                        var empty = val === '' || val === null || isNaN(parseFloat(val));
+                        if (empty) widget.classList.add('number-empty'); else widget.classList.remove('number-empty');
+                    });
+                }
+                bindTickerUppercase(root);
             }
             function onInput() { run(); }
             setTimeout(function() {
@@ -1114,12 +1141,8 @@ def main():
         st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by live fetch.")
         manual_left_col, manual_right_col = st.columns(2, gap="large")
         with manual_left_col:
-            ticker = st.text_input("Underlying Ticker", value=st.session_state.get("ticker", "SPY"), key="ticker")
-            normalized_ticker = (ticker or "").upper()
-            if normalized_ticker != ticker:
-                st.session_state["ticker"] = normalized_ticker
-                st.rerun()
-            ticker = normalized_ticker
+            st.text_input("Underlying Ticker", key="ticker", on_change=_normalize_ticker_input)
+            ticker = st.session_state.get("ticker", "SPY")
 
             col_strikes = st.columns(2)
             with col_strikes[0]:
