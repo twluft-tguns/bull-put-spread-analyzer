@@ -1276,80 +1276,6 @@ def main():
                         mime="application/json",
                         help="Save this file as schwab_token.json in your project folder so the background monitor can run on your PC.",
                     )
-                if st.button("📡 Fetch Live Data"):
-                    try:
-                        # Capture current form values so they are not lost on rerun
-                        saved_expiration = st.session_state.get("expiration_date")
-                        saved_short = st.session_state.get("short_put_strike")
-                        saved_long = st.session_state.get("long_put_strike")
-                        saved_iv_at_entry = st.session_state.get("iv_at_entry")
-                        saved_entry_credit = st.session_state.get("entry_credit")
-                        saved_target_profit_pct = st.session_state.get("target_profit_pct")
-                        live = fetch_schwab_live_data(
-                            st.session_state["ticker"],
-                            saved_expiration or datetime.date.today() + datetime.timedelta(days=30),
-                            saved_short or 430.0,
-                            saved_long or 420.0,
-                        )
-                        # Don't overwrite with zeros: if API returned no useful data, keep existing values
-                        live_looks_empty = (
-                            (live["current_price"] or 0) == 0
-                            and (live["current_debit_to_close"] or 0) == 0
-                            and (live["net_delta"] or 0) == 0
-                            and (live["net_vega"] or 0) == 0
-                            and (live["current_iv"] or 0) == 0
-                        )
-                        if live_looks_empty:
-                            st.warning(
-                                "Live data came back empty (all zeros). Your current values were kept. "
-                                "Try again during market hours or check API response."
-                            )
-                        else:
-                            st.session_state["current_price"] = live["current_price"]
-                            st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
-                            st.session_state["net_delta"] = live["net_delta"]
-                            st.session_state["net_vega"] = live["net_vega"]
-                            st.session_state["current_iv"] = live["current_iv"]
-                            st.session_state["last_live_fetch_time"] = time.time()
-                            st.success("Live data loaded.")
-                        # Restore form values so DTE, strikes, entry credit, IV at entry, and target profit don't reset on rerun
-                        if saved_expiration is not None:
-                            st.session_state["expiration_date"] = saved_expiration
-                        if saved_short is not None:
-                            st.session_state["short_put_strike"] = saved_short
-                        if saved_long is not None:
-                            st.session_state["long_put_strike"] = saved_long
-                        if saved_iv_at_entry is not None:
-                            st.session_state["iv_at_entry"] = saved_iv_at_entry
-                            st.session_state["iv_at_entry_baseline"] = saved_iv_at_entry
-                        if saved_entry_credit is not None:
-                            st.session_state["entry_credit"] = saved_entry_credit
-                        if saved_target_profit_pct is not None:
-                            st.session_state["target_profit_pct"] = saved_target_profit_pct
-                        st.rerun()
-                    except Exception as e:
-                        st.error(str(e))
-                # Auto-refresh: continuously pull live data and alert via Telegram when Close Now
-                prev_auto_refresh = st.session_state.get("auto_refresh_prev", False)
-                auto_refresh = st.checkbox(
-                    "Auto-refresh live data",
-                    value=st.session_state.get("auto_refresh", False),
-                    key="auto_refresh",
-                    help="Refresh live data every 30 seconds and get Telegram alerts when the recommendation changes to Close Now or Close Now or Roll.",
-                )
-                st.session_state["auto_refresh_prev"] = auto_refresh
-                if auto_refresh:
-                    st.caption("Refreshes every 30 seconds.")
-                    if has_telegram_config():
-                        st.caption("Telegram alerts when recommendation changes to Close Now / Close Now or Roll.")
-                    else:
-                        st.caption("Add [telegram] bot_token and chat_id in secrets for alerts. For alerts when the app is closed, run: python -m mcps.monitor")
-                    if not prev_auto_refresh:
-                        st.session_state["auto_fetch_due"] = True
-                        st.rerun()
-                else:
-                    st.session_state.pop("last_live_autorefresh_tick", None)
-                    st.session_state.pop("last_telegram_recommendation", None)
             else:
                 auth_url = build_schwab_auth_url()
                 st.markdown(
@@ -1600,7 +1526,7 @@ def main():
         else:
             st.markdown(f"**${_profit:,.2f}** <span style='color: #dc2626; font-weight: 600;'>↓ {_profit_pct:,.1f}%</span>", unsafe_allow_html=True)
 
-    _row2a, _row2b, _row2c = st.columns(3)
+    _row2a, _row2b, _row2c, _row2d = st.columns(4)
     with _row2a:
         st.caption("Short put strike IV (current)")
         st.write(f"**{_iv:.2f}%**")
@@ -1614,6 +1540,76 @@ def main():
     with _row2c:
         st.caption("Net Delta")
         st.write(f"**{_delta:.2f}**")
+    with _row2d:
+        if has_schwab_config() and "schwab_token" in st.session_state:
+            if st.button("📡 Fetch Live Data", key="fetch_live_main", use_container_width=True):
+                try:
+                    saved_expiration = st.session_state.get("expiration_date")
+                    saved_short = st.session_state.get("short_put_strike")
+                    saved_long = st.session_state.get("long_put_strike")
+                    saved_iv_at_entry = st.session_state.get("iv_at_entry")
+                    saved_entry_credit = st.session_state.get("entry_credit")
+                    saved_target_profit_pct = st.session_state.get("target_profit_pct")
+                    live = fetch_schwab_live_data(
+                        st.session_state["ticker"],
+                        saved_expiration or datetime.date.today() + datetime.timedelta(days=30),
+                        saved_short or 430.0,
+                        saved_long or 420.0,
+                    )
+                    live_looks_empty = (
+                        (live["current_price"] or 0) == 0
+                        and (live["current_debit_to_close"] or 0) == 0
+                        and (live["net_delta"] or 0) == 0
+                        and (live["net_vega"] or 0) == 0
+                        and (live["current_iv"] or 0) == 0
+                    )
+                    if live_looks_empty:
+                        st.warning(
+                            "Live data came back empty (all zeros). Your current values were kept. "
+                            "Try again during market hours or check API response."
+                        )
+                    else:
+                        st.session_state["current_price"] = live["current_price"]
+                        st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
+                        st.session_state["net_delta"] = live["net_delta"]
+                        st.session_state["net_vega"] = live["net_vega"]
+                        st.session_state["current_iv"] = live["current_iv"]
+                        st.session_state["last_live_fetch_time"] = time.time()
+                        st.success("Live data loaded.")
+                    if saved_expiration is not None:
+                        st.session_state["expiration_date"] = saved_expiration
+                    if saved_short is not None:
+                        st.session_state["short_put_strike"] = saved_short
+                    if saved_long is not None:
+                        st.session_state["long_put_strike"] = saved_long
+                    if saved_iv_at_entry is not None:
+                        st.session_state["iv_at_entry"] = saved_iv_at_entry
+                        st.session_state["iv_at_entry_baseline"] = saved_iv_at_entry
+                    if saved_entry_credit is not None:
+                        st.session_state["entry_credit"] = saved_entry_credit
+                    if saved_target_profit_pct is not None:
+                        st.session_state["target_profit_pct"] = saved_target_profit_pct
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+            prev_auto_refresh = st.session_state.get("auto_refresh_prev", False)
+            auto_refresh = st.checkbox(
+                "Auto-refresh live data",
+                value=st.session_state.get("auto_refresh", False),
+                key="auto_refresh",
+                help="Refresh live data every 30 seconds and get Telegram alerts when the recommendation changes to Close Now or Close Now or Roll.",
+            )
+            st.session_state["auto_refresh_prev"] = auto_refresh
+            if auto_refresh:
+                st.caption("Refreshes every 30 s.")
+                if not prev_auto_refresh:
+                    st.session_state["auto_fetch_due"] = True
+                    st.rerun()
+            else:
+                st.session_state.pop("last_live_autorefresh_tick", None)
+                st.session_state.pop("last_telegram_recommendation", None)
+        else:
+            st.caption("Connect to Schwab in sidebar for live data")
 
     # Live data from Schwab (read-only; populated by Fetch Live Data / auto-fetch)
     current_price = st.session_state.get("current_price", 440.0)
