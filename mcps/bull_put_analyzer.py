@@ -598,7 +598,9 @@ def get_schwab_access_token() -> str:
     # Refresh if expired or expiring within 60s (Schwab access tokens ~30 min)
     expires_in = token.get("expires_in", 0)
     obtained = token.get("_obtained_at") or 0
-    if obtained and expires_in and (datetime.datetime.now(datetime.timezone.utc).timestamp() - obtained) >= (expires_in - 60):
+    if not expires_in:
+        expires_in = 1800  # assume 30 min if missing
+    if not obtained or (datetime.datetime.now(datetime.timezone.utc).timestamp() - obtained) >= (expires_in - 60):
         token = refresh_schwab_token()
         access = token.get("access_token", access)
     return access
@@ -632,7 +634,21 @@ def fetch_schwab_live_data(
         "Schwab-Client-CorrelId": str(uuid.uuid4()),
     }
     resp = requests.get(base, params=params, headers=headers, timeout=30)
+    # On 401, try refreshing the token once and retry (Schwab access tokens expire ~30 min)
+    if resp.status_code == 401 and access_token is None:
+        try:
+            refresh_schwab_token()
+            token = get_schwab_access_token()
+            headers["Authorization"] = f"Bearer {token}"
+            resp = requests.get(base, params=params, headers=headers, timeout=30)
+        except Exception:
+            pass
     if resp.status_code != 200:
+        if resp.status_code == 401:
+            raise RuntimeError(
+                "Chains request failed: 401 Unauthorized. Your Schwab session may have expired. "
+                "Click 'Disconnect Schwab' then 'Connect to Schwab' to sign in again."
+            )
         raise RuntimeError(f"Chains request failed: {resp.status_code} {resp.text[:500]}")
     data = resp.json()
 
