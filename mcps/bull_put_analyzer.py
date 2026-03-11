@@ -1155,7 +1155,7 @@ def main():
                     except Exception as e:
                         st.error(f"Delete failed: {e}")
 
-        # Compact summary under buttons: 8 metrics in 2 lines inside a box (fetched/calculated)
+        # Compact summary under buttons: live metrics in 4 rows of 2
         _exp = st.session_state.get("expiration_date") or (datetime.date.today() + datetime.timedelta(days=30))
         _entry_c = st.session_state.get("entry_credit", 0.0) or 0.0
         _price = st.session_state.get("current_price", 0.0) or 0.0
@@ -1168,25 +1168,38 @@ def main():
         _profit, _profit_pct = compute_profit_metrics(_entry_c, _debit)
         _iv_chg = compute_iv_change(_iv, _iv_entry)
 
-        _dte_str = f"{_dte} days" if _dte >= 0 else f"{_dte} days (past)"
-        _box_html = f"""
-        <div style="border: 1px solid #9ca3af; border-radius: 8px; padding: 12px 14px; background-color: #f8fafc; margin-top: 8px;">
-            <div style="font-size: 0.85rem; color: #6b7280; margin-bottom: 10px;">Live data (fetched / calculated)</div>
-            <div style="display: flex; flex-wrap: wrap; gap: 16px 24px; margin-bottom: 10px;">
-                <div><div style="font-size: 0.75rem; color: #6b7280;">Days to expiration</div><div style="font-weight: 600;">{_dte_str}</div></div>
-                <div><div style="font-size: 0.75rem; color: #6b7280;">Underlying price</div><div style="font-weight: 600;">${_price:,.2f}</div></div>
-                <div><div style="font-size: 0.75rem; color: #6b7280;">Current debit to close</div><div style="font-weight: 600;">${_debit:,.2f}</div></div>
-                <div><div style="font-size: 0.75rem; color: #6b7280;">Potential profit</div><div style="font-weight: 600;">${_profit:,.2f} ({_profit_pct:,.1f}%)</div></div>
-            </div>
-            <div style="display: flex; flex-wrap: wrap; gap: 16px 24px;">
-                <div><div style="font-size: 0.75rem; color: #6b7280;">Current IV</div><div style="font-weight: 600;">{_iv:.2f}%</div></div>
-                <div><div style="font-size: 0.75rem; color: #6b7280;">IV change</div><div style="font-weight: 600;">{_iv_chg:+.2f}%</div></div>
-                <div><div style="font-size: 0.75rem; color: #6b7280;">Net Delta</div><div style="font-weight: 600;">{_delta:.2f}</div></div>
-                <div><div style="font-size: 0.75rem; color: #6b7280;">Net Theta</div><div style="font-weight: 600;">{_theta:+.2f}</div></div>
-            </div>
-        </div>
-        """
-        st.markdown(_box_html, unsafe_allow_html=True)
+        st.markdown("---")
+        _r1a, _r1b = st.columns(2)
+        with _r1a:
+            st.caption("Days to expiration")
+            st.write(f"**{_dte} days**" if _dte >= 0 else f"**{_dte} days** (past)")
+        with _r1b:
+            st.caption("Underlying price")
+            st.write(f"**${_price:,.2f}**")
+
+        _r2a, _r2b = st.columns(2)
+        with _r2a:
+            st.caption("Current debit to close")
+            st.write(f"**${_debit:,.2f}**")
+        with _r2b:
+            st.caption("Potential profit")
+            st.write(f"**${_profit:,.2f}** ({_profit_pct:,.1f}%)")
+
+        _r3a, _r3b = st.columns(2)
+        with _r3a:
+            st.caption("Current IV")
+            st.write(f"**{_iv:.2f}%**")
+        with _r3b:
+            st.caption("IV change")
+            st.write(f"**{_iv_chg:+.2f}%**")
+
+        _r4a, _r4b = st.columns(2)
+        with _r4a:
+            st.caption("Net Delta")
+            st.write(f"**{_delta:.2f}**")
+        with _r4b:
+            st.caption("Net Theta")
+            st.write(f"**{_theta:+.2f}**")
 
     with manual_entry_col:
         st.markdown("#### 📝 Manual Entry")
