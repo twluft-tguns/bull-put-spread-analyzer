@@ -132,11 +132,16 @@ def get_recommendation(
     return recommendation, color, reasons
 
 
-def explain_recommendation_for_novice(recommendation: str, reasons: List[str]) -> List[str]:
+def explain_recommendation_for_novice(
+    recommendation: str,
+    reasons: List[str],
+    profit_pct: float | None = None,
+    target_profit_pct: float | None = None,
+) -> List[str]:
     """Turn rule-of-thumb reasons into plain-language explanations for novice options traders."""
     intro = ""
     if "Close Now" in recommendation and "or Roll" not in recommendation:
-        intro = "Why close now? You’ve hit one or more conditions that many experienced traders use as a signal to take the trade off and lock in the result."
+        intro = "Why close now? You've hit your target profit or you've met multiple other conditions that suggest closing."
     elif "Close Now or Roll" in recommendation:
         intro = "Why consider closing or rolling? This trade is in a risk zone: closing can cut the loss, and rolling can give you more time and a better strike or expiration."
     elif "Hold" in recommendation:
@@ -145,6 +150,8 @@ def explain_recommendation_for_novice(recommendation: str, reasons: List[str]) -
         intro = "What this means: The suggestion above is based on common rules of thumb for managing bull put spreads."
 
     explanations: List[str] = []
+    if "Close Now" in recommendation and "or Roll" not in recommendation and profit_pct is not None and target_profit_pct is not None and profit_pct >= target_profit_pct:
+        explanations.append(f"You've reached your target of {target_profit_pct:.0f}% profit (current: {profit_pct:.1f}%).")
     for r in reasons:
         r_lower = r.lower()
         if "high profit" in r_lower and "80%" in r:
@@ -1385,7 +1392,10 @@ def main():
 
     # --- Step-by-Step Reasoning (novice-friendly, based on rule-of-thumb logic) ---
     st.markdown("### Step-by-Step Reasoning")
-    novice_explanations = explain_recommendation_for_novice(recommendation, rec_reasons)
+    target_pct = st.session_state.get("target_profit_pct")
+    novice_explanations = explain_recommendation_for_novice(
+        recommendation, rec_reasons, profit_pct=profit_pct, target_profit_pct=target_pct
+    )
     reasoning_md = "<div style='border-radius: 8px; padding: 1rem 1.25rem; background-color: #f9fafb; border: 1px solid #e5e7eb;'>"
     reasoning_md += "<p style='margin: 0 0 0.75rem 0; color: #111827;'>" + novice_explanations[0] + "</p>"
     reasoning_md += "<ul style='margin: 0 0 0 1.2rem; padding-left: 0;'>"
