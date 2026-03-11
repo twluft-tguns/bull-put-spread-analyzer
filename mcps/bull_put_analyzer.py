@@ -1,5 +1,6 @@
 import base64
 import datetime
+import html
 import time
 import uuid
 from typing import List, Tuple
@@ -152,46 +153,78 @@ def get_conditions_checklist(
     net_theta: float,
     iv_change: float,
     price_near_short: bool,
-) -> List[Tuple[str, bool]]:
-    """Return list of (condition_label, met) for close/hold: target profit first, then other conditions (no roll criterion)."""
+) -> List[Tuple[str, bool, str]]:
+    """Return list of (condition_label, met, tooltip) for close/hold: target profit first, then other conditions (no roll criterion)."""
     theta_threshold = 1.0
     iv_rise_threshold = 5.0
 
-    conditions: List[Tuple[str, bool]] = []
+    conditions: List[Tuple[str, bool, str]] = []
 
     # 1. Target profit achieved (top)
     if target_profit_pct is not None:
         met = profit_pct >= target_profit_pct
-        conditions.append((f"Target profit achieved ({target_profit_pct:.0f}%)", met))
+        conditions.append((
+            f"Target profit achieved ({target_profit_pct:.0f}%)",
+            met,
+            "Closing once you hit your target locks in the gain and avoids giving back profit if the market reverses. Many traders use a fixed target (e.g. 50% or 80%) as a discipline rule.",
+        ))
 
     # 2. High profit (≥ 80%)
-    conditions.append(("High profit (≥ 80%)", profit_pct >= 80))
+    conditions.append((
+        "High profit (≥ 80%)",
+        profit_pct >= 80,
+        "Once you've captured 80% or more of the max profit, the remaining upside is small compared to the risk of a sudden move. Closing secures most of the gain.",
+    ))
 
     # 3. Solid profit (≥ 50%) with ≤ 21 DTE
-    conditions.append(("Solid profit (≥ 50%) with ≤ 21 DTE", profit_pct >= 50 and dte <= 21))
+    conditions.append((
+        "Solid profit (≥ 50%) with ≤ 21 DTE",
+        profit_pct >= 50 and dte <= 21,
+        "A 50%+ profit with 21 days or less to expiration is a good risk/reward point to close: you've banked half the credit and gamma risk increases as expiration nears.",
+    ))
 
     # 4. Very low DTE (< 7)
-    conditions.append(("Very low DTE (< 7 days)", dte < 7))
+    conditions.append((
+        "Very low DTE (< 7 days)",
+        dte < 7,
+        "In the last week, time decay slows and gamma (sensitivity to underlying price) spikes. Small moves can quickly turn a winner into a loser, so closing is often prudent.",
+    ))
 
     # 5. Net delta too directional
-    conditions.append((f"Net delta too directional (|Δ| > 0.50)", abs(net_delta) > 0.50))
+    conditions.append((
+        f"Net delta too directional (|Δ| > 0.50)",
+        abs(net_delta) > 0.50,
+        "A high absolute delta means the spread behaves like a big directional bet. If the underlying moves against you, the position can lose value quickly. Closing reduces directional risk.",
+    ))
 
     # 6. Net theta very low
-    conditions.append(("Net theta very low (little time decay left)", abs(net_theta) < theta_threshold))
+    conditions.append((
+        "Net theta very low (little time decay left)",
+        abs(net_theta) < theta_threshold,
+        "When theta is very low, you're barely earning time decay each day. There's little benefit to holding longer, and you're mainly exposed to price and volatility risk.",
+    ))
 
     # 7. IV risen ≥ 5%
-    conditions.append((f"IV has risen ≥ {iv_rise_threshold}% (relative to entry)", iv_change >= iv_rise_threshold))
+    conditions.append((
+        f"IV has risen ≥ {iv_rise_threshold}% (relative to entry)",
+        iv_change >= iv_rise_threshold,
+        "Higher implied volatility usually means option premiums are more expensive. Your short put spread benefits when IV falls; if IV has risen, the position is under more stress and closing can reduce volatility risk.",
+    ))
 
     # (Roll criterion "Losing money, price near short strike" only shown when recommendation is Close Now or Roll)
 
     return conditions
 
 
-def get_roll_conditions_checklist(profit_pct: float, price_near_short: bool) -> List[Tuple[str, bool]]:
-    """Return list of (condition_label, met) for roll recommendation only."""
+def get_roll_conditions_checklist(profit_pct: float, price_near_short: bool) -> List[Tuple[str, bool, str]]:
+    """Return list of (condition_label, met, tooltip) for roll recommendation only."""
     losing_money = profit_pct < 0
     return [
-        ("Losing money, price near short strike", losing_money and price_near_short),
+        (
+            "Losing money, price near short strike",
+            losing_money and price_near_short,
+            "When you're in a loss and the underlying is near your short strike, the position is at high risk: a small move can lead to assignment or a much larger loss. Rolling out in time (and possibly down in strike) can buy time and reduce immediate risk.",
+        ),
     ]
 
 
@@ -1528,14 +1561,16 @@ def main():
     reasoning_md += "<p style='margin: 0 0 0.75rem 0; color: #111827;'>" + novice_explanations[0] + "</p>"
 
     # Conditions checklist with green checkmarks
+    _tip = "<span title='{tooltip}' style='display:inline-flex;align-items:center;justify-content:center;width:1.1em;height:1.1em;border:1px solid #6b7280;border-radius:50%;font-size:0.7em;cursor:help;margin-left:0.25rem;opacity:0.85;'>?</span>"
     if "Close Now or Roll" in recommendation:
         # Roll recommendation: show only roll criteria in a red-tinted section
         roll_conditions = get_roll_conditions_checklist(profit_pct, price_near_short)
         reasoning_md += "<p style='margin: 0 0 0.35rem 0; color: #111827; font-weight: 600;'>Criteria to roll</p>"
         reasoning_md += "<div style='margin-bottom: 0.75rem;'>"
-        for label, met in roll_conditions:
+        for label, met, tooltip in roll_conditions:
             check = "<span style='color: #16a34a; font-weight: bold;'>✓</span>" if met else "<span style='color: #9ca3af;'>—</span>"
-            reasoning_md += f"<div style='margin-bottom: 0.35rem; color: #374151; line-height: 1.5;'>{check} {label}</div>"
+            tip_html = _tip.format(tooltip=html.escape(tooltip))
+            reasoning_md += f"<div style='margin-bottom: 0.35rem; color: #374151; line-height: 1.5;'>{check} {label}{tip_html}</div>"
         reasoning_md += "</div>"
     elif "Hold" in recommendation or "Close Now" in recommendation:
         # Close or Hold: show close/hold conditions (no roll criterion)
@@ -1543,9 +1578,10 @@ def main():
             dte, profit_pct, target_pct, net_delta, net_theta, iv_change, price_near_short
         )
         reasoning_md += "<div style='margin-bottom: 0.75rem;'>"
-        for label, met in conditions:
+        for label, met, tooltip in conditions:
             check = "<span style='color: #16a34a; font-weight: bold;'>✓</span>" if met else "<span style='color: #9ca3af; margin-right: 0.35rem;'>—</span>"
-            reasoning_md += f"<div style='margin-bottom: 0.35rem; color: #374151; line-height: 1.5;'>{check} {label}</div>"
+            tip_html = _tip.format(tooltip=html.escape(tooltip))
+            reasoning_md += f"<div style='margin-bottom: 0.35rem; color: #374151; line-height: 1.5;'>{check} {label}{tip_html}</div>"
         reasoning_md += "</div>"
 
     reasoning_md += "<ul style='margin: 0 0 0 1.2rem; padding-left: 0;'>"
