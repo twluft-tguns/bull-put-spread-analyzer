@@ -1115,6 +1115,49 @@ def main():
             st.session_state["last_auto_load_workspace"] = workspace_key
             st.rerun()
 
+        st.markdown("**Load Trade**")
+        load_options_sb = ["(none)"] + list(saved_trades.keys()) if saved_trades else ["(none)"]
+        if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options_sb:
+            default_load_index_sb = load_options_sb.index(st.session_state["trade_to_load"])
+        elif saved_trades:
+            default_load_index_sb = 1
+        else:
+            default_load_index_sb = 0
+        trade_to_load_sb = st.selectbox(
+            "Select a saved trade to load",
+            options=load_options_sb,
+            index=default_load_index_sb,
+            key="trade_to_load",
+            label_visibility="collapsed",
+        )
+        if trade_to_load_sb and trade_to_load_sb != "(none)":
+            _parsed = _ticker_from_trade_label(trade_to_load_sb)
+            if _parsed and st.session_state.get("ticker") != _parsed:
+                st.session_state["ticker"] = _parsed
+        if (
+            saved_trades
+            and trade_to_load_sb != "(none)"
+            and trade_to_load_sb == load_options_sb[1]
+            and st.session_state.get("last_auto_load_workspace") != workspace_key
+        ):
+            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load_sb]
+            st.session_state["loaded_trade_label"] = trade_to_load_sb
+            st.session_state["last_auto_load_workspace"] = workspace_key
+            st.rerun()
+        if trade_to_load_sb != "(none)" and st.button("📥 Apply Loaded Trade", key="apply_loaded_trade_sidebar", use_container_width=True):
+            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load_sb]
+            st.session_state["loaded_trade_label"] = trade_to_load_sb
+            st.rerun()
+        if st.button("🗑️ Delete selected trade", key="delete_trade_sidebar", use_container_width=True):
+            if trade_to_load_sb != "(none)":
+                try:
+                    delete_trade(workspace_key, trade_to_load_sb)
+                    st.success(f"Deleted '{trade_to_load_sb}'")
+                    st.session_state["trade_to_load"] = "(none)"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Delete failed: {e}")
+
         st.markdown("---")
 
         st.markdown("#### Schwab Connection")
@@ -1298,6 +1341,12 @@ def main():
                     st.rerun()
 
     # --- Main Layout ---
+    workspace_key = (st.session_state.get("workspace_key") or "").strip()
+    try:
+        saved_trades = list_trades(workspace_key)
+    except Exception:
+        saved_trades = {}
+
     st.markdown(
         "<h1 style='margin-bottom: 0.25rem;'>Bull Put Spread Analyzer – Optimal Exit Time</h1>",
         unsafe_allow_html=True,
@@ -1316,19 +1365,6 @@ def main():
             if trade_label_value.strip() and st.session_state.get("trade_to_load", "(none)") != "(none)":
                 st.session_state["trade_to_load"] = "(none)"
                 st.rerun()
-        load_options = ["(none)"] + list(saved_trades.keys())
-        if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options:
-            default_load_index = load_options.index(st.session_state["trade_to_load"])
-        elif saved_trades:
-            default_load_index = 1
-        else:
-            default_load_index = 0
-        trade_to_load = st.selectbox(
-            "Load Trade",
-            options=load_options,
-            index=default_load_index,
-            key="trade_to_load",
-        )
 
         def _persist_telegram_pref(workspace_key: str, trade_label: str) -> None:
             key = "tg_" + trade_label
@@ -1350,40 +1386,6 @@ def main():
                     args=(workspace_key, lbl),
                     help="Send Telegram when recommendation changes to Close Now or Close Now or Roll for this trade.",
                 )
-
-        # Keep ticker in sync with selected trade label so it can't revert to SPY (e.g. after refresh or sidebar run order)
-        if trade_to_load and trade_to_load != "(none)":
-            parsed = _ticker_from_trade_label(trade_to_load)
-            if parsed and st.session_state.get("ticker") != parsed:
-                st.session_state["ticker"] = parsed
-
-        if (
-            saved_trades
-            and trade_to_load != "(none)"
-            and trade_to_load == load_options[1]
-            and st.session_state.get("last_auto_load_workspace") != workspace_key
-        ):
-            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
-            st.session_state["loaded_trade_label"] = trade_to_load
-            st.session_state["last_auto_load_workspace"] = workspace_key
-            st.rerun()
-
-        col_load_btn, col_del_btn = st.columns(2)
-        with col_load_btn:
-            if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade", key="apply_loaded_trade_main"):
-                st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
-                st.session_state["loaded_trade_label"] = trade_to_load
-                st.rerun()
-        with col_del_btn:
-            if st.button("🗑️ Delete", key="delete_trade_main"):
-                if trade_to_load != "(none)":
-                    try:
-                        delete_trade(workspace_key, trade_to_load)
-                        st.success(f"Deleted '{trade_to_load}'")
-                        st.session_state["trade_to_load"] = "(none)"
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Delete failed: {e}")
 
     with manual_entry_col:
         st.markdown("#### 📝 Manual Entry")
