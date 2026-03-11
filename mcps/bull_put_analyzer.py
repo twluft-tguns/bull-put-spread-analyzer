@@ -1294,6 +1294,12 @@ def main():
             else:
                 st.warning("Select a trade in the dropdown to save to, or enter a new trade name.")
 
+    # Divider line above fetched/calculated metrics
+    st.markdown(
+        '<hr style="border: none; border-top: 1px solid #374151; margin: 16px 0 12px 0; opacity: 0.6;">',
+        unsafe_allow_html=True,
+    )
+
     # Fetched/calculated metrics in 2 rows (4+4), then single line
     _exp = st.session_state.get("expiration_date") or (datetime.date.today() + datetime.timedelta(days=30))
     _entry_c = st.session_state.get("entry_credit", 0.0) or 0.0
