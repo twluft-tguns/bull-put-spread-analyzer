@@ -883,8 +883,14 @@ def main():
         for key in ("current_price", "current_debit_to_close", "net_delta", "net_theta", "net_vega", "current_iv"):
             st.session_state.pop(key, None)
         st.session_state.pop("last_live_fetch_time", None)
-        st.session_state["iv_at_entry"] = float(data.get("iv_at_entry") or 0.0)
-        st.session_state["iv_at_entry_baseline"] = float(data.get("iv_at_entry") or 0.0)
+        # Only restore iv_at_entry from payload when we didn't correct the ticker (payload may be from wrong ticker)
+        if ticker_from_label and ticker_from_label != ticker_from_data:
+            # Payload was saved with wrong ticker; iv_at_entry in payload is for the wrong symbol
+            st.session_state["iv_at_entry"] = 0.0
+            st.session_state["iv_at_entry_baseline"] = 0.0
+        else:
+            st.session_state["iv_at_entry"] = float(data.get("iv_at_entry") or 0.0)
+            st.session_state["iv_at_entry_baseline"] = float(data.get("iv_at_entry") or 0.0)
         _loaded_dte = compute_dte(st.session_state["expiration_date"])
         st.session_state["target_profit_pct"] = float(data.get("target_profit_pct") or default_target_profit_pct(_loaded_dte))
 
@@ -1533,7 +1539,11 @@ def main():
         st.write(f"**{_iv:.2f}%**")
     with _row2b:
         st.caption("IV change")
-        st.write(f"**{_iv_chg:+.2f}%**")
+        if _iv_entry and float(_iv_entry) != 0:
+            st.write(f"**{_iv_chg:+.2f}%**")
+        else:
+            st.write("**—**")
+            st.caption("Enter IV at entry above")
     with _row2c:
         st.caption("Net Delta")
         st.write(f"**{_delta:.2f}**")
