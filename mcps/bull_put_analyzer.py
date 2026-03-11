@@ -1127,35 +1127,51 @@ def main():
             st.rerun()
 
         st.markdown("**Saved Trades**")
-        # Compute profit % and recommendation color for each trade (for button label and background)
+        current_loaded = st.session_state.get("trade_to_load", "(none)")
+        # Compute profit % and recommendation color for each trade; use live session data for the loaded trade so it matches the right side
         trade_colors: List[str] = []
         for lbl in saved_trades.keys():
             p = saved_trades[lbl]
-            entry_c = float(p.get("entry_credit") or 0)
-            debit = float(p.get("current_debit_to_close") or 0)
+            if lbl == current_loaded:
+                entry_c = float(st.session_state.get("entry_credit") or 0)
+                debit = float(st.session_state.get("current_debit_to_close") or 0)
+            else:
+                entry_c = float(p.get("entry_credit") or 0)
+                debit = float(p.get("current_debit_to_close") or 0)
             if entry_c and entry_c > 0:
                 _, profit_pct = compute_profit_metrics(entry_c, debit)
             else:
                 profit_pct = 0.0
-            # Recommendation color for button background
+            # Recommendation color for button background (use live data for loaded trade)
             try:
-                exp_val = p.get("expiration_date")
-                if isinstance(exp_val, str):
-                    exp_date = datetime.date.fromisoformat(exp_val)
+                if lbl == current_loaded:
+                    exp_date = st.session_state.get("expiration_date") or (datetime.date.today() + datetime.timedelta(days=30))
+                    net_delta = float(st.session_state.get("net_delta") or 0)
+                    current_iv = float(st.session_state.get("current_iv") or 0)
+                    iv_entry = float(st.session_state.get("iv_at_entry_baseline") or st.session_state.get("iv_at_entry") or 0)
+                    underlying = float(st.session_state.get("current_price") or 0)
+                    short_s = float(st.session_state.get("short_put_strike") or 0)
+                    target_pct = st.session_state.get("target_profit_pct")
+                    if target_pct is not None:
+                        target_pct = float(target_pct)
                 else:
-                    exp_date = exp_val or (datetime.date.today() + datetime.timedelta(days=30))
+                    exp_val = p.get("expiration_date")
+                    if isinstance(exp_val, str):
+                        exp_date = datetime.date.fromisoformat(exp_val)
+                    else:
+                        exp_date = exp_val or (datetime.date.today() + datetime.timedelta(days=30))
+                    net_delta = float(p.get("net_delta") or 0)
+                    current_iv = float(p.get("current_iv") or 0)
+                    iv_entry = float(p.get("iv_at_entry") or 0)
+                    underlying = float(p.get("current_price") or 0)
+                    short_s = float(p.get("short_put_strike") or 0)
+                    target_pct = p.get("target_profit_pct")
+                    if target_pct is not None:
+                        target_pct = float(target_pct)
                 dte = compute_dte(exp_date)
                 current_profit = (entry_c - debit) if entry_c else 0.0
-                net_delta = float(p.get("net_delta") or 0)
-                current_iv = float(p.get("current_iv") or 0)
-                iv_entry = float(p.get("iv_at_entry") or 0)
                 iv_change = compute_iv_change(current_iv, iv_entry)
-                underlying = float(p.get("current_price") or 0)
-                short_s = float(p.get("short_put_strike") or 0)
                 price_near_short = is_price_near_short_strike(underlying, short_s)
-                target_pct = p.get("target_profit_pct")
-                if target_pct is not None:
-                    target_pct = float(target_pct)
                 _, rec_color, _ = get_recommendation(
                     dte, profit_pct, current_profit, net_delta, iv_change, price_near_short, target_pct
                 )
@@ -1163,21 +1179,31 @@ def main():
             except Exception:
                 trade_colors.append("#6b7280")  # neutral gray
 
-        # CSS to color each trade button by recommendation (first N stButton elements in sidebar = trade buttons)
-        if trade_colors:
-            css_rules = "".join(
+        N = len(trade_colors)
+        # Color only the first N buttons (trade buttons); reset Delete and Disconnect to neutral so they don't get recommendation colors
+        if N > 0:
+            css_trade = "".join(
                 f'[data-testid="stSidebar"] [data-testid="stButton"]:nth-of-type({i+1}) button {{ background-color: {c} !important; color: white !important; border: none !important; }} '
                 for i, c in enumerate(trade_colors)
             )
+            css_reset = (
+                f'[data-testid="stSidebar"] [data-testid="stButton"]:nth-of-type({N+1}) button, '
+                f'[data-testid="stSidebar"] [data-testid="stButton"]:nth-of-type({N+2}) button '
+                f'{{ background-color: #374151 !important; color: white !important; border: none !important; }} '
+            )
             st.markdown(
-                f'<style>{css_rules}</style>',
+                f'<style>{css_trade}{css_reset}</style>',
                 unsafe_allow_html=True,
             )
 
         for i, lbl in enumerate(saved_trades.keys()):
             p = saved_trades[lbl]
-            entry_c = float(p.get("entry_credit") or 0)
-            debit = float(p.get("current_debit_to_close") or 0)
+            if lbl == current_loaded:
+                entry_c = float(st.session_state.get("entry_credit") or 0)
+                debit = float(st.session_state.get("current_debit_to_close") or 0)
+            else:
+                entry_c = float(p.get("entry_credit") or 0)
+                debit = float(p.get("current_debit_to_close") or 0)
             if entry_c and entry_c > 0:
                 _, profit_pct = compute_profit_metrics(entry_c, debit)
             else:
@@ -1202,7 +1228,6 @@ def main():
                     f'<span style="color: {profit_color}; font-weight: 600; font-size: 0.9rem;">{profit_str}</span>',
                     unsafe_allow_html=True,
                 )
-        current_loaded = st.session_state.get("trade_to_load", "(none)")
         if current_loaded != "(none)" and current_loaded in saved_trades:
             if st.button("🗑️ Delete selected trade", key="delete_trade_sidebar", use_container_width=True):
                 try:
