@@ -1054,7 +1054,7 @@ def main():
             except Exception:
                 pass
 
-        st.markdown("#### Profile")
+        st.markdown("**Profile**")
         if has_supabase_config():
             st.success("Cloud storage enabled (Supabase).")
         else:
@@ -1174,7 +1174,7 @@ def main():
 
         st.markdown("---")
 
-        st.markdown("#### Live Market Data Connection")
+        st.markdown("**Live Market Data Connection**")
         if not has_schwab_config():
             st.info("Schwab API not configured. Add [schwab] secrets to enable live data.")
         else:
