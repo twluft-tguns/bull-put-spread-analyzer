@@ -978,6 +978,18 @@ def main():
         [data-testid="stSidebar"] div[data-testid="stDateinput"] input {
             border-color: #9ca3af !important;
         }
+        /* Smaller text and status boxes in sidebar */
+        [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4 {
+            font-size: 0.9rem !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stAlert"] {
+            font-size: 0.8rem !important;
+            padding: 0.35rem 0.5rem !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stAlert"] p {
+            font-size: inherit !important;
+            margin: 0 !important;
+        }
         </style>
         """, unsafe_allow_html=True)
 
@@ -1162,7 +1174,7 @@ def main():
 
         st.markdown("---")
 
-        st.markdown("#### Schwab Connection")
+        st.markdown("#### Live Market Data Connection")
         if not has_schwab_config():
             st.info("Schwab API not configured. Add [schwab] secrets to enable live data.")
         else:
