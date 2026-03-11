@@ -1322,16 +1322,11 @@ def main():
                     "Auto-refresh live data",
                     value=st.session_state.get("auto_refresh", False),
                     key="auto_refresh",
-                    help="Refresh live data at the chosen interval and get Telegram alerts when the recommendation changes to Close Now or Close Now or Roll.",
+                    help="Refresh live data every 30 seconds and get Telegram alerts when the recommendation changes to Close Now or Close Now or Roll.",
                 )
                 st.session_state["auto_refresh_prev"] = auto_refresh
                 if auto_refresh:
-                    interval_min = st.selectbox(
-                        "Refresh interval (minutes)",
-                        options=[1, 2, 5],
-                        index=0,
-                        key="auto_refresh_interval",
-                    )
+                    st.caption("Refreshes every 30 seconds.")
                     if has_telegram_config():
                         st.caption("Telegram alerts when recommendation changes to Close Now / Close Now or Roll.")
                     else:
@@ -1355,8 +1350,7 @@ def main():
 
         # Non-blocking auto-refresh timer (no long greyed-out spinner)
         if st.session_state.get("auto_refresh") and "schwab_token" in st.session_state:
-            interval_sec = int(st.session_state.get("auto_refresh_interval", 1)) * 60
-            tick = st_autorefresh(interval=interval_sec * 1000, key="live_data_autorefresh_timer")
+            tick = st_autorefresh(interval=30 * 1000, key="live_data_autorefresh_timer")
             last_tick = st.session_state.get("last_live_autorefresh_tick", -1)
             if tick != last_tick:
                 st.session_state["last_live_autorefresh_tick"] = tick
