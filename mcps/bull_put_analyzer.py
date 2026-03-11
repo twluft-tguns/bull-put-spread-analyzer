@@ -182,8 +182,8 @@ def get_conditions_checklist(
     # 7. IV risen ≥ 5%
     conditions.append((f"IV has risen ≥ {iv_rise_threshold}%", iv_change >= iv_rise_threshold))
 
-    # 8. Losing and price near short strike
-    conditions.append(("Losing money and price near short strike", losing_money and price_near_short))
+    # 8. Losing and price near short strike — criterion to consider rolling (or closing)
+    conditions.append(("Losing money, price near short strike (consider roll)", losing_money and price_near_short))
 
     return conditions
 
