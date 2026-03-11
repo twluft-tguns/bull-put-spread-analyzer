@@ -1057,6 +1057,7 @@ def main():
         known_keys = list_workspace_keys()
         ensure_workspace_key(known_keys)
 
+        st.markdown("**Profile**")
         if known_keys:
             options = known_keys + ["(Add new...)"]
             current_key = (st.session_state.get("workspace_key") or "").strip()
@@ -1069,6 +1070,7 @@ def main():
                 options=options,
                 index=default_index,
                 key="workspace_key_select",
+                label_visibility="collapsed",
                 help="Select a profile or add a new one. Your saved trades are grouped by profile.",
             )
             if sel == "(Add new...)":
@@ -1087,6 +1089,7 @@ def main():
                 "Profile",
                 value=st.session_state.get("workspace_key", ""),
                 key="workspace_key",
+                label_visibility="collapsed",
                 help="This key separates your saved trades from other users. Save a trade to create your first profile.",
             )
 
