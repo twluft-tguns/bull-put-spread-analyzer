@@ -1426,8 +1426,6 @@ def main():
                 key="expiration_date",
             )
 
-            save_trade_clicked = st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual")
-
         with manual_right_col:
             entry_credit = st.number_input(
                 "Entry Credit Received (per spread)",
@@ -1462,6 +1460,10 @@ def main():
                 key="target_profit_pct",
                 help="Profit % to aim for before closing. Defaults: 50% when DTE ≤ 21 days, 80% when DTE > 21 (rule-of-thumb).",
             )
+
+        _, col_save_btn, _ = st.columns([1, 1, 1])
+        with col_save_btn:
+            save_trade_clicked = st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual")
 
         if save_trade_clicked:
             if save_target:
