@@ -203,14 +203,13 @@ def get_recommendation(
     profit_pct: float,
     current_profit: float,
     net_delta: float,
-    net_theta: float,
     iv_change: float,
     price_near_short: bool,
 ) -> str:
     """Return recommendation string (e.g. '✅ Close Now')."""
     from mcps.bull_put_analyzer import get_recommendation as _rec
 
-    rec, _, _ = _rec(dte, profit_pct, current_profit, net_delta, net_theta, iv_change, price_near_short)
+    rec, _, _ = _rec(dte, profit_pct, current_profit, net_delta, iv_change, price_near_short)
     return rec
 
 
@@ -328,7 +327,7 @@ def run_once(access_token: str) -> None:
         near_short = is_price_near_short_strike(live["current_price"], short_s)
         rec = get_recommendation(
             dte, profit_pct, current_profit,
-            live["net_delta"], live["net_theta"], iv_change, near_short,
+            live["net_delta"], iv_change, near_short,
         )
         if rec not in ("✅ Close Now", "⚠️ Close Now or Roll"):
             continue

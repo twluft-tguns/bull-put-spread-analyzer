@@ -76,7 +76,6 @@ def get_recommendation(
     profit_pct: float,
     current_profit: float,
     net_delta: float,
-    net_theta: float,
     iv_change: float,
     price_near_short: bool,
     target_profit_pct: float | None = None,
@@ -84,8 +83,9 @@ def get_recommendation(
     reasons: List[str] = []
     close_signals: List[str] = []
 
-    theta_threshold = 1.0  # very low daily decay threshold (in $ per day)
-    iv_rise_threshold = 5.0  # percentage points
+    iv_rise_threshold = 5.0  # % relative to entry – consider close when IV has risen
+    iv_rise_roll_threshold = 10.0  # % relative – when in loss, strong signal to consider roll
+    iv_fall_threshold = 5.0  # % relative – consider closing to lock in vol crush when in profit
 
     losing_money = profit_pct < 0
 
@@ -105,16 +105,22 @@ def get_recommendation(
     if abs(net_delta) > 0.50:
         close_signals.append(f"Net delta |{net_delta:.2f}| > 0.50 – spread is too directional.")
 
-    # Rule: Close if Net Theta is very low (almost no daily decay left)
-    if abs(net_theta) < theta_threshold:
+    # Rule: IV has fallen – consider closing to lock in the vol crush (vega has worked in your favor)
+    if iv_change <= -iv_fall_threshold and (profit_pct >= 50 or (target_profit_pct is not None and profit_pct >= target_profit_pct)):
         close_signals.append(
-            f"Net theta is very low ({net_theta:.2f}) – limited additional time decay benefit remaining."
+            f"IV has fallen {abs(iv_change):.1f}% vs entry – consider closing to lock in the vol crush."
         )
 
     # Rule: Close if IV has risen ≥5% relative to entry
     if iv_change >= iv_rise_threshold:
         close_signals.append(
             f"Implied volatility has increased by {iv_change:.1f}% vs entry (≥ {iv_rise_threshold}% relative) – risk has increased."
+        )
+
+    # Rule: When in loss and IV has risen a lot – strong consider close or roll (vega hurting you)
+    if losing_money and iv_change >= iv_rise_roll_threshold:
+        close_signals.append(
+            f"Losing money and IV has risen {iv_change:.1f}% vs entry (≥ {iv_rise_roll_threshold}%) – consider closing or rolling to reduce vega risk."
         )
 
     # Rule: Close if losing money and price is near the short strike
@@ -172,13 +178,13 @@ def get_conditions_checklist(
     profit_pct: float,
     target_profit_pct: float | None,
     net_delta: float,
-    net_theta: float,
     iv_change: float,
     price_near_short: bool,
 ) -> List[Tuple[str, bool, str]]:
     """Return list of (condition_label, met, tooltip) for close/hold: target profit first, then other conditions (no roll criterion)."""
-    theta_threshold = 1.0
     iv_rise_threshold = 5.0
+    iv_fall_threshold = 5.0
+    iv_rise_roll_threshold = 10.0
 
     conditions: List[Tuple[str, bool, str]] = []
 
@@ -219,11 +225,12 @@ def get_conditions_checklist(
         "A high absolute delta means the spread behaves like a big directional bet. If the underlying moves against you, the position can lose value quickly. Closing reduces directional risk.",
     ))
 
-    # 6. Net theta very low
+    # 6. IV fallen – lock in vol crush (when in profit)
+    _iv_fall_profit = profit_pct >= 50 or (target_profit_pct is not None and profit_pct >= target_profit_pct)
     conditions.append((
-        "Net theta very low (little time decay left)",
-        abs(net_theta) < theta_threshold,
-        "When theta is very low, you're barely earning time decay each day. There's little benefit to holding longer, and you're mainly exposed to price and volatility risk.",
+        f"IV has fallen ≥ {iv_fall_threshold}% (lock in vol crush)",
+        iv_change <= -iv_fall_threshold and _iv_fall_profit,
+        "IV has dropped since entry, so vega has already worked in your favor. Closing now locks in that gain and avoids giving it back if IV bounces.",
     ))
 
     # 7. IV risen ≥ 5%
@@ -233,19 +240,25 @@ def get_conditions_checklist(
         "Higher implied volatility usually means option premiums are more expensive. Your short put spread benefits when IV falls; if IV has risen, the position is under more stress and closing can reduce volatility risk.",
     ))
 
-    # (Roll criterion "Losing money, price near short strike" only shown when recommendation is Close Now or Roll)
+    # (Roll criteria only shown when recommendation is Close Now or Roll)
 
     return conditions
 
 
-def get_roll_conditions_checklist(profit_pct: float, price_near_short: bool) -> List[Tuple[str, bool, str]]:
+def get_roll_conditions_checklist(profit_pct: float, price_near_short: bool, iv_change: float) -> List[Tuple[str, bool, str]]:
     """Return list of (condition_label, met, tooltip) for roll recommendation only."""
     losing_money = profit_pct < 0
+    iv_rise_roll_threshold = 10.0
     return [
         (
             "Losing money, price near short strike",
             losing_money and price_near_short,
             "When you're in a loss and the underlying is near your short strike, the position is at high risk: a small move can lead to assignment or a much larger loss. Rolling out in time (and possibly down in strike) can buy time and reduce immediate risk.",
+        ),
+        (
+            f"Losing money, IV risen ≥ {iv_rise_roll_threshold}%",
+            losing_money and iv_change >= iv_rise_roll_threshold,
+            "When you're in a loss and IV has risen a lot, your short vega exposure is hurting you. Rolling can reset vega exposure, give more time, and sometimes capture more premium in elevated vol.",
         ),
     ]
 
@@ -279,9 +292,7 @@ def explain_recommendation_for_novice(
         if r.strip().startswith("Condition that was met:"):
             sub = r.strip()[len("Condition that was met:"):].strip()
             sub_lower = sub.lower()
-            if "theta" in sub_lower and "very low" in sub_lower:
-                explanations.append("The one condition that was met: You're barely earning any time decay; there's little extra benefit to holding.")
-            elif "net delta" in sub_lower:
+            if "net delta" in sub_lower:
                 explanations.append("The one condition that was met: Your spread is acting very directional (high delta).")
             elif "dte < 7" in sub_lower or "very low dte" in sub_lower:
                 explanations.append("The one condition that was met: Very little time left (under 7 days); gamma risk is elevated.")
@@ -291,6 +302,8 @@ def explain_recommendation_for_novice(
                 explanations.append("The one condition that was met: Good profit (50%+) with 21 days or less to go.")
             elif "volatility" in sub_lower or "iv" in sub_lower:
                 explanations.append("The one condition that was met: Volatility (IV) has increased.")
+            elif "iv has fallen" in sub_lower:
+                explanations.append("The one condition that was met: IV has fallen – consider closing to lock in the vol crush.")
             elif "losing money" in sub_lower:
                 explanations.append("The one condition that was met: You're in a loss and the stock is near your short strike.")
             else:
@@ -305,12 +318,14 @@ def explain_recommendation_for_novice(
             explanations.append("**Very little time left (under 7 days).** Near expiration, small stock moves can cause big swings in your spread (gamma risk). Closing or rolling is often safer than holding to expiry.")
         elif "net delta" in r_lower and "0.50" in r:
             explanations.append("**Your spread is acting very directional (high delta).** That means it’s more like a big bet on the stock. If the stock moves against you, the loss can grow quickly, so closing or reducing size is often wise.")
-        elif "theta" in r_lower and "very low" in r_lower:
-            explanations.append("**You’re barely earning any time decay.** There’s little extra benefit to holding, so closing is often the simpler move.")
+        elif "iv has fallen" in r_lower or "lock in the vol crush" in r_lower:
+            explanations.append("**IV has fallen since entry.** Vega has worked in your favor; closing now locks in that gain and avoids giving it back if IV bounces.")
         elif "volatility has increased" in r_lower or "iv has" in r_lower or "implied volatility" in r_lower:
             explanations.append("**Volatility (IV) has gone up.** Higher IV usually means more risk and bigger swings. Closing can help you avoid giving back gains or taking a larger loss.")
         elif "losing money" in r_lower and "short strike" in r_lower:
             explanations.append("**You’re in a loss and the stock is near your short strike.** That increases the chance of assignment or deeper losses. Closing or rolling is worth serious consideration.")
+        elif "losing money" in r_lower and "iv has risen" in r_lower:
+            explanations.append("**You’re in a loss and IV has risen a lot.** Your short vega exposure is hurting you; closing or rolling can reduce vega risk and give you time.")
         elif "expiration date is in the past" in r_lower:
             explanations.append("**The expiration date has already passed.** Double-check your trade details; you may need to update the date or treat the position as closed.")
         elif "no strong risk signals" in r_lower or "no strong close" in r_lower:
@@ -1115,7 +1130,6 @@ def main():
                             (live.get("current_price") or 0) == 0
                             and (live.get("current_debit_to_close") or 0) == 0
                             and (live.get("net_delta") or 0) == 0
-                            and (live.get("net_theta") or 0) == 0
                             and (live.get("net_vega") or 0) == 0
                             and (live.get("current_iv") or 0) == 0
                         )
@@ -1123,7 +1137,6 @@ def main():
                             st.session_state["current_price"] = live["current_price"]
                             st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
                             st.session_state["net_delta"] = live["net_delta"]
-                            st.session_state["net_theta"] = live["net_theta"]
                             st.session_state["net_vega"] = live["net_vega"]
                             st.session_state["current_iv"] = live["current_iv"]
                     except Exception:
@@ -1148,7 +1161,6 @@ def main():
                             (live.get("current_price") or 0) == 0
                             and (live.get("current_debit_to_close") or 0) == 0
                             and (live.get("net_delta") or 0) == 0
-                            and (live.get("net_theta") or 0) == 0
                             and (live.get("net_vega") or 0) == 0
                             and (live.get("current_iv") or 0) == 0
                         )
@@ -1156,7 +1168,6 @@ def main():
                             st.session_state["current_price"] = live["current_price"]
                             st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
                             st.session_state["net_delta"] = live["net_delta"]
-                            st.session_state["net_theta"] = live["net_theta"]
                             st.session_state["net_vega"] = live["net_vega"]
                             st.session_state["current_iv"] = live["current_iv"]
                             # Check recommendation and send Telegram only when it changes to Close Now or Close Now or Roll
@@ -1169,7 +1180,7 @@ def main():
                             near_short = is_price_near_short_strike(live["current_price"], short_s)
                             rec, _, reasons = get_recommendation(
                                 dte, profit_pct, current_profit,
-                                live["net_delta"], live["net_theta"], iv_chg, near_short,
+                                live["net_delta"], iv_chg, near_short,
                                 target_profit_pct=st.session_state.get("target_profit_pct"),
                             )
                             last_rec = st.session_state.get("last_telegram_recommendation")
@@ -1216,7 +1227,6 @@ def main():
                             (live.get("current_price") or 0) == 0
                             and (live.get("current_debit_to_close") or 0) == 0
                             and (live.get("net_delta") or 0) == 0
-                            and (live.get("net_theta") or 0) == 0
                             and (live.get("net_vega") or 0) == 0
                             and (live.get("current_iv") or 0) == 0
                         )
@@ -1224,7 +1234,6 @@ def main():
                             st.session_state["current_price"] = live["current_price"]
                             st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
                             st.session_state["net_delta"] = live["net_delta"]
-                            st.session_state["net_theta"] = live["net_theta"]
                             st.session_state["net_vega"] = live["net_vega"]
                             st.session_state["current_iv"] = live["current_iv"]
                         st.session_state["last_live_fetch_time"] = time.time()
@@ -1281,7 +1290,6 @@ def main():
                             (live["current_price"] or 0) == 0
                             and (live["current_debit_to_close"] or 0) == 0
                             and (live["net_delta"] or 0) == 0
-                            and (live["net_theta"] or 0) == 0
                             and (live["net_vega"] or 0) == 0
                             and (live["current_iv"] or 0) == 0
                         )
@@ -1294,7 +1302,6 @@ def main():
                             st.session_state["current_price"] = live["current_price"]
                             st.session_state["current_debit_to_close"] = live["current_debit_to_close"]
                             st.session_state["net_delta"] = live["net_delta"]
-                            st.session_state["net_theta"] = live["net_theta"]
                             st.session_state["net_vega"] = live["net_vega"]
                             st.session_state["current_iv"] = live["current_iv"]
                             st.session_state["last_live_fetch_time"] = time.time()
@@ -1537,7 +1544,6 @@ def main():
                     payload["current_price"] = st.session_state.get("current_price", 440.0)
                     payload["current_debit_to_close"] = st.session_state.get("current_debit_to_close", 0.40)
                     payload["net_delta"] = st.session_state.get("net_delta", 0.20)
-                    payload["net_theta"] = st.session_state.get("net_theta", 3.50)
                     payload["net_vega"] = st.session_state.get("net_vega", -0.40)
                     payload["current_iv"] = st.session_state.get("current_iv", 22.0)
                 try:
@@ -1563,7 +1569,6 @@ def main():
     _iv = st.session_state.get("current_iv", 0.0) or 0.0
     _iv_entry = st.session_state.get("iv_at_entry_baseline", st.session_state.get("iv_at_entry", 0.0)) or 0.0
     _delta = st.session_state.get("net_delta", 0.0) or 0.0
-    _theta = st.session_state.get("net_theta", 0.0) or 0.0
     _dte = compute_dte(_exp)
     _profit, _profit_pct = compute_profit_metrics(_entry_c, _debit)
     _iv_chg = compute_iv_change(_iv, _iv_entry)
@@ -1586,7 +1591,7 @@ def main():
         else:
             st.markdown(f"**${_profit:,.2f}** <span style='color: #dc2626; font-weight: 600;'>↓ {_profit_pct:,.1f}%</span>", unsafe_allow_html=True)
 
-    _row2a, _row2b, _row2c, _row2d = st.columns(4)
+    _row2a, _row2b, _row2c = st.columns(3)
     with _row2a:
         st.caption("Current IV")
         st.write(f"**{_iv:.2f}%**")
@@ -1600,15 +1605,11 @@ def main():
     with _row2c:
         st.caption("Net Delta")
         st.write(f"**{_delta:.2f}**")
-    with _row2d:
-        st.caption("Net Theta")
-        st.write(f"**{_theta:+.2f}**")
 
     # Live data from Schwab (read-only; populated by Fetch Live Data / auto-fetch)
     current_price = st.session_state.get("current_price", 440.0)
     current_debit_to_close = st.session_state.get("current_debit_to_close", 0.40)
     net_delta = st.session_state.get("net_delta", 0.20)
-    net_theta = st.session_state.get("net_theta", 3.50)
     net_vega = st.session_state.get("net_vega", -0.40)
     current_iv = st.session_state.get("current_iv", 22.0)
     # IV at entry: baseline for IV Change = exactly what's in Manual Entry "IV at Entry (%)"
@@ -1628,7 +1629,6 @@ def main():
         profit_pct=profit_pct,
         current_profit=current_profit,
         net_delta=net_delta,
-        net_theta=net_theta,
         iv_change=iv_change,
         price_near_short=price_near_short,
         target_profit_pct=st.session_state.get("target_profit_pct"),
@@ -1650,7 +1650,7 @@ def main():
     _tip = "<span title='{tooltip}' style='display:inline-flex;align-items:center;justify-content:center;width:1.1em;height:1.1em;border:1px solid #6b7280;border-radius:50%;font-size:0.7em;cursor:help;margin-left:0.25rem;opacity:0.85;'>?</span>"
     if "Close Now or Roll" in recommendation:
         # Roll recommendation: show only roll criteria in a red-tinted section
-        roll_conditions = get_roll_conditions_checklist(profit_pct, price_near_short)
+        roll_conditions = get_roll_conditions_checklist(profit_pct, price_near_short, iv_change)
         reasoning_md += "<p style='margin: 0 0 0.35rem 0; color: #111827; font-weight: 600;'>Criteria to roll</p>"
         reasoning_md += "<div style='margin-bottom: 0.75rem;'>"
         for label, met, tooltip in roll_conditions:
@@ -1661,7 +1661,7 @@ def main():
     elif "Hold" in recommendation or "Close Now" in recommendation:
         # Close or Hold: show close/hold conditions (no roll criterion)
         conditions = get_conditions_checklist(
-            dte, profit_pct, target_pct, net_delta, net_theta, iv_change, price_near_short
+            dte, profit_pct, target_pct, net_delta, iv_change, price_near_short
         )
         reasoning_md += "<div style='margin-bottom: 0.75rem;'>"
         for label, met, tooltip in conditions:
