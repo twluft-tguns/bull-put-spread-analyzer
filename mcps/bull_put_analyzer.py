@@ -158,7 +158,7 @@ def get_recommendation(
     else:
         # No strong close signal – decide between mild hold and monitor
         if 0 <= profit_pct < 50 and dte > 7:
-            recommendation = "🟢 Hold 3–7 more days"
+            recommendation = "🟢 Hold and Monitor"
             color = "#22c55e"  # bright green
             reasons.append(
                 "No strong risk signals detected and there is still time value – holding a few more days is reasonable."
