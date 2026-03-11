@@ -814,11 +814,17 @@ def main():
         label = (st.session_state.pop("loaded_trade_label", "") or "").strip()
         ticker_from_data = (data.get("ticker") or "").strip().upper()
         if label:
-            first_word = label.split()[0] if label.split() else ""
+            # First try first word; else use first word that looks like a ticker (1-5 letters)
+            parts = label.split()
+            first_word = parts[0] if parts else ""
             if first_word and len(first_word) <= 5 and first_word.isalpha():
                 st.session_state["ticker"] = first_word.upper()
             else:
-                st.session_state["ticker"] = ticker_from_data or "SPY"
+                ticker_from_label = next(
+                    (p.upper() for p in parts if len(p) <= 5 and p.isalpha()),
+                    None,
+                )
+                st.session_state["ticker"] = ticker_from_label or ticker_from_data or "SPY"
         else:
             st.session_state["ticker"] = ticker_from_data or "SPY"
         st.session_state["short_put_strike"] = data["short_put_strike"]
@@ -1026,6 +1032,7 @@ def main():
             and st.session_state.get("last_auto_load_workspace") != workspace_key
         ):
             st.session_state["loaded_trade_data"] = saved_trades[first_trade_label]
+            st.session_state["loaded_trade_label"] = first_trade_label
             st.session_state["trade_to_load"] = first_trade_label
             st.session_state["last_auto_load_workspace"] = workspace_key
             st.rerun()
