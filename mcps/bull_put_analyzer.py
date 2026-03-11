@@ -1133,6 +1133,11 @@ def main():
                     st.rerun()
                 # Auto-refresh: when timer fired, fetch live data and optionally send Telegram alert
                 if st.session_state.get("auto_fetch_due"):
+                    # Preserve manual-entry fields so they are never overwritten by refresh
+                    _preserve_entry_credit = st.session_state.get("entry_credit")
+                    _preserve_target_pct = st.session_state.get("target_profit_pct")
+                    _preserve_iv_entry = st.session_state.get("iv_at_entry")
+                    _preserve_iv_baseline = st.session_state.get("iv_at_entry_baseline")
                     try:
                         ticker_s = st.session_state.get("ticker", "SPY")
                         exp = st.session_state.get("expiration_date") or datetime.date.today() + datetime.timedelta(days=30)
@@ -1182,12 +1187,25 @@ def main():
                             st.session_state["last_telegram_recommendation"] = rec
                     except Exception:
                         pass
+                    # Restore manual-entry fields so entry credit, IV at entry, and target profit stay correct
+                    if _preserve_entry_credit is not None:
+                        st.session_state["entry_credit"] = _preserve_entry_credit
+                    if _preserve_target_pct is not None:
+                        st.session_state["target_profit_pct"] = _preserve_target_pct
+                    if _preserve_iv_entry is not None:
+                        st.session_state["iv_at_entry"] = _preserve_iv_entry
+                    if _preserve_iv_baseline is not None:
+                        st.session_state["iv_at_entry_baseline"] = _preserve_iv_baseline
                     st.session_state["last_live_fetch_time"] = time.time()
                     st.session_state.pop("auto_fetch_due", None)
 
                 # Keep live data fresh: when connected, fetch if we haven't in the last 60 seconds (no button click)
                 last_fetch = st.session_state.get("last_live_fetch_time")
                 if last_fetch is None or (time.time() - last_fetch > 60):
+                    _keep_entry_credit = st.session_state.get("entry_credit")
+                    _keep_target_pct = st.session_state.get("target_profit_pct")
+                    _keep_iv_entry = st.session_state.get("iv_at_entry")
+                    _keep_iv_baseline = st.session_state.get("iv_at_entry_baseline")
                     try:
                         ticker_s = st.session_state.get("ticker", "SPY")
                         exp = st.session_state.get("expiration_date") or datetime.date.today() + datetime.timedelta(days=30)
@@ -1210,6 +1228,14 @@ def main():
                             st.session_state["net_vega"] = live["net_vega"]
                             st.session_state["current_iv"] = live["current_iv"]
                         st.session_state["last_live_fetch_time"] = time.time()
+                        if _keep_entry_credit is not None:
+                            st.session_state["entry_credit"] = _keep_entry_credit
+                        if _keep_target_pct is not None:
+                            st.session_state["target_profit_pct"] = _keep_target_pct
+                        if _keep_iv_entry is not None:
+                            st.session_state["iv_at_entry"] = _keep_iv_entry
+                        if _keep_iv_baseline is not None:
+                            st.session_state["iv_at_entry_baseline"] = _keep_iv_baseline
                     except Exception:
                         pass
 
@@ -1242,6 +1268,8 @@ def main():
                         saved_short = st.session_state.get("short_put_strike")
                         saved_long = st.session_state.get("long_put_strike")
                         saved_iv_at_entry = st.session_state.get("iv_at_entry")
+                        saved_entry_credit = st.session_state.get("entry_credit")
+                        saved_target_profit_pct = st.session_state.get("target_profit_pct")
                         live = fetch_schwab_live_data(
                             st.session_state["ticker"],
                             saved_expiration or datetime.date.today() + datetime.timedelta(days=30),
@@ -1271,7 +1299,7 @@ def main():
                             st.session_state["current_iv"] = live["current_iv"]
                             st.session_state["last_live_fetch_time"] = time.time()
                             st.success("Live data loaded.")
-                        # Restore form values so DTE and strikes don't reset on rerun
+                        # Restore form values so DTE, strikes, entry credit, IV at entry, and target profit don't reset on rerun
                         if saved_expiration is not None:
                             st.session_state["expiration_date"] = saved_expiration
                         if saved_short is not None:
@@ -1281,6 +1309,10 @@ def main():
                         if saved_iv_at_entry is not None:
                             st.session_state["iv_at_entry"] = saved_iv_at_entry
                             st.session_state["iv_at_entry_baseline"] = saved_iv_at_entry
+                        if saved_entry_credit is not None:
+                            st.session_state["entry_credit"] = saved_entry_credit
+                        if saved_target_profit_pct is not None:
+                            st.session_state["target_profit_pct"] = saved_target_profit_pct
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
@@ -1554,6 +1586,7 @@ def main():
         st.write(f"**${_debit:,.2f}**")
     with _row1d:
         st.caption("Potential profit")
+        st.caption("Entry credit − Debit to close")
         if _profit_pct >= 0:
             st.markdown(f"**${_profit:,.2f}** <span style='color: #16a34a; font-weight: 600;'>↑ {_profit_pct:,.1f}%</span>", unsafe_allow_html=True)
         else:
