@@ -810,7 +810,17 @@ def main():
     # be from the wrong ticker (e.g. SPY). We refetch live data for the loaded trade's ticker.
     if "loaded_trade_data" in st.session_state:
         data = st.session_state.pop("loaded_trade_data")
-        st.session_state["ticker"] = data["ticker"]
+        # Prefer ticker from trade label (e.g. "AMZN 3/3" -> AMZN) when payload has wrong/missing ticker
+        label = (st.session_state.pop("loaded_trade_label", "") or "").strip()
+        ticker_from_data = (data.get("ticker") or "").strip().upper()
+        if label:
+            first_word = label.split()[0] if label.split() else ""
+            if first_word and len(first_word) <= 5 and first_word.isalpha():
+                st.session_state["ticker"] = first_word.upper()
+            else:
+                st.session_state["ticker"] = ticker_from_data or "SPY"
+        else:
+            st.session_state["ticker"] = ticker_from_data or "SPY"
         st.session_state["short_put_strike"] = data["short_put_strike"]
         st.session_state["long_put_strike"] = data["long_put_strike"]
         exp_val = data["expiration_date"]
@@ -1291,6 +1301,7 @@ def main():
             and st.session_state.get("last_auto_load_workspace") != workspace_key
         ):
             st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+            st.session_state["loaded_trade_label"] = trade_to_load
             st.session_state["last_auto_load_workspace"] = workspace_key
             st.rerun()
 
@@ -1298,6 +1309,7 @@ def main():
         with col_load_btn:
             if trade_to_load != "(none)" and st.button("📥 Apply Loaded Trade", key="apply_loaded_trade_main"):
                 st.session_state["loaded_trade_data"] = saved_trades[trade_to_load]
+                st.session_state["loaded_trade_label"] = trade_to_load
                 st.rerun()
         with col_del_btn:
             if st.button("🗑️ Delete", key="delete_trade_main"):
