@@ -1158,6 +1158,10 @@ def main():
     with manual_entry_col:
         st.markdown("#### 📝 Manual Entry")
         st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by live fetch.")
+        current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
+        current_trade_label = (st.session_state.get("trade_label") or "").strip()
+        save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
+
         manual_left_col, manual_right_col = st.columns(2, gap="large")
         with manual_left_col:
             st.text_input("Underlying Ticker", key="ticker", on_change=_normalize_ticker_input)
@@ -1188,6 +1192,8 @@ def main():
                 key="expiration_date",
             )
 
+            save_trade_clicked = st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual")
+
         with manual_right_col:
             entry_credit = st.number_input(
                 "Entry Credit Received (per spread)",
@@ -1216,11 +1222,6 @@ def main():
                 key="notes",
             )
 
-        current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
-        current_trade_label = (st.session_state.get("trade_label") or "").strip()
-        save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
-        with manual_right_col:
-            save_trade_clicked = st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual")
         if save_trade_clicked:
             if save_target:
                 existing = dict(saved_trades.get(save_target, {})) if save_target in saved_trades else {}
@@ -1279,7 +1280,10 @@ def main():
         st.write(f"**${_debit:,.2f}**")
     with _row1d:
         st.caption("Potential profit")
-        st.write(f"**${_profit:,.2f}** ({_profit_pct:,.1f}%)")
+        if _profit_pct >= 0:
+            st.markdown(f"**${_profit:,.2f}** <span style='color: #16a34a; font-weight: 600;'>↑ {_profit_pct:,.1f}%</span>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"**${_profit:,.2f}** <span style='color: #dc2626; font-weight: 600;'>↓ {_profit_pct:,.1f}%</span>", unsafe_allow_html=True)
 
     _row2a, _row2b, _row2c, _row2d = st.columns(4)
     with _row2a:
