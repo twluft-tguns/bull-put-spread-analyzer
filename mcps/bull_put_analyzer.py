@@ -1065,7 +1065,7 @@ def main():
             except ValueError:
                 default_index = 0
             sel = st.selectbox(
-                "Profile (keep this private)",
+                "Profile",
                 options=options,
                 index=default_index,
                 key="workspace_key_select",
@@ -1084,7 +1084,7 @@ def main():
             st.session_state["workspace_key"] = workspace_key
         else:
             workspace_key = st.text_input(
-                "Profile (keep this private)",
+                "Profile",
                 value=st.session_state.get("workspace_key", ""),
                 key="workspace_key",
                 help="This key separates your saved trades from other users. Save a trade to create your first profile.",
