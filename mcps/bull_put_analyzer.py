@@ -1126,14 +1126,82 @@ def main():
             st.session_state["last_auto_load_workspace"] = workspace_key
             st.rerun()
 
-        st.markdown("**Load Trade**")
+        st.markdown("**Saved Trades**")
+        # Compute profit % and recommendation color for each trade (for button label and background)
+        trade_colors: List[str] = []
+        for lbl in saved_trades.keys():
+            p = saved_trades[lbl]
+            entry_c = float(p.get("entry_credit") or 0)
+            debit = float(p.get("current_debit_to_close") or 0)
+            if entry_c and entry_c > 0:
+                _, profit_pct = compute_profit_metrics(entry_c, debit)
+            else:
+                profit_pct = 0.0
+            # Recommendation color for button background
+            try:
+                exp_val = p.get("expiration_date")
+                if isinstance(exp_val, str):
+                    exp_date = datetime.date.fromisoformat(exp_val)
+                else:
+                    exp_date = exp_val or (datetime.date.today() + datetime.timedelta(days=30))
+                dte = compute_dte(exp_date)
+                current_profit = (entry_c - debit) if entry_c else 0.0
+                net_delta = float(p.get("net_delta") or 0)
+                current_iv = float(p.get("current_iv") or 0)
+                iv_entry = float(p.get("iv_at_entry") or 0)
+                iv_change = compute_iv_change(current_iv, iv_entry)
+                underlying = float(p.get("current_price") or 0)
+                short_s = float(p.get("short_put_strike") or 0)
+                price_near_short = is_price_near_short_strike(underlying, short_s)
+                target_pct = p.get("target_profit_pct")
+                if target_pct is not None:
+                    target_pct = float(target_pct)
+                _, rec_color, _ = get_recommendation(
+                    dte, profit_pct, current_profit, net_delta, iv_change, price_near_short, target_pct
+                )
+                trade_colors.append(rec_color)
+            except Exception:
+                trade_colors.append("#6b7280")  # neutral gray
+
+        # CSS to color each trade button by recommendation (first N stButton elements in sidebar = trade buttons)
+        if trade_colors:
+            css_rules = "".join(
+                f'[data-testid="stSidebar"] [data-testid="stButton"]:nth-of-type({i+1}) button {{ background-color: {c} !important; color: white !important; border: none !important; }} '
+                for i, c in enumerate(trade_colors)
+            )
+            st.markdown(
+                f'<style>{css_rules}</style>',
+                unsafe_allow_html=True,
+            )
+
         for i, lbl in enumerate(saved_trades.keys()):
-            if st.button(lbl, key=f"load_trade_btn_{i}", use_container_width=True):
-                st.session_state["trade_to_load"] = lbl
-                st.session_state["loaded_trade_data"] = saved_trades[lbl]
-                st.session_state["loaded_trade_label"] = lbl
-                st.session_state["last_auto_load_workspace"] = workspace_key
-                st.rerun()
+            p = saved_trades[lbl]
+            entry_c = float(p.get("entry_credit") or 0)
+            debit = float(p.get("current_debit_to_close") or 0)
+            if entry_c and entry_c > 0:
+                _, profit_pct = compute_profit_metrics(entry_c, debit)
+            else:
+                profit_pct = 0.0
+            is_up = profit_pct >= 0
+            profit_str = f" ↑ {profit_pct:,.1f}%" if is_up else f" ↓ {profit_pct:,.1f}%"
+            profit_color = "#16a34a" if is_up else "#dc2626"
+            btn_col, pct_col = st.columns([0.72, 0.28])
+            with btn_col:
+                if st.button(
+                    lbl,
+                    key=f"load_trade_btn_{i}",
+                    use_container_width=True,
+                ):
+                    st.session_state["trade_to_load"] = lbl
+                    st.session_state["loaded_trade_data"] = saved_trades[lbl]
+                    st.session_state["loaded_trade_label"] = lbl
+                    st.session_state["last_auto_load_workspace"] = workspace_key
+                    st.rerun()
+            with pct_col:
+                st.markdown(
+                    f'<span style="color: {profit_color}; font-weight: 600; font-size: 0.9rem;">{profit_str}</span>',
+                    unsafe_allow_html=True,
+                )
         current_loaded = st.session_state.get("trade_to_load", "(none)")
         if current_loaded != "(none)" and current_loaded in saved_trades:
             if st.button("🗑️ Delete selected trade", key="delete_trade_sidebar", use_container_width=True):
