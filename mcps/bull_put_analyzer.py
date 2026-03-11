@@ -35,10 +35,10 @@ def compute_profit_metrics(entry_credit: float, current_debit: float) -> Tuple[f
 
 
 def compute_iv_change(current_iv: float, entry_iv: float) -> float:
-    """Return relative IV change in percent: (current - entry) / entry * 100. E.g. 25% -> 30% = +20%."""
-    if current_iv is None or entry_iv is None or entry_iv == 0:
+    """Return IV change in percentage points: current_iv - entry_iv (e.g. 22% vs 25% = -3 points)."""
+    if current_iv is None or entry_iv is None:
         return 0.0
-    return (current_iv - entry_iv) / entry_iv * 100.0
+    return current_iv - entry_iv
 
 
 def is_price_near_short_strike(underlying: float, short_strike: float, tolerance_pct: float = 1.0) -> bool:
@@ -88,10 +88,10 @@ def get_recommendation(
             f"Net theta is very low ({net_theta:.2f}) – limited additional time decay benefit remaining."
         )
 
-    # Rule: Close if IV has risen more than 5% (relative to entry)
+    # Rule: Close if IV has risen more than 5 percentage points vs entry
     if iv_change >= iv_rise_threshold:
         close_signals.append(
-            f"Implied volatility has increased by {iv_change:.1f}% vs entry (≥ {iv_rise_threshold}% relative) – risk has increased."
+            f"Implied volatility has increased by {iv_change:.1f} percentage points vs entry (≥ {iv_rise_threshold}) – risk has increased."
         )
 
     # Rule: Close if losing money and price is near the short strike
@@ -139,7 +139,7 @@ def get_recommendation(
     if dte < 0:
         reasons.append("Warning: Expiration date is in the past – verify the inputs.")
     else:
-        reasons.append(f"DTE: {dte} days, Profit: {profit_pct:.1f}%, IV change: {iv_change:.1f}%.")
+        reasons.append(f"DTE: {dte} days, Profit: {profit_pct:.1f}%, IV change: {iv_change:.1f} pp.")
 
     return recommendation, color, reasons
 
@@ -180,7 +180,7 @@ def get_conditions_checklist(
     conditions.append(("Net theta very low (little time decay left)", abs(net_theta) < theta_threshold))
 
     # 7. IV risen ≥ 5%
-    conditions.append((f"IV has risen ≥ {iv_rise_threshold}% (relative to entry)", iv_change >= iv_rise_threshold))
+    conditions.append((f"IV has risen ≥ {iv_rise_threshold} percentage points", iv_change >= iv_rise_threshold))
 
     # (Roll criterion "Losing money, price near short strike" only shown when recommendation is Close Now or Roll)
 
@@ -1476,8 +1476,8 @@ def main():
         st.caption("Current IV")
         st.write(f"**{_iv:.2f}%**")
     with _row2b:
-        st.caption("IV change")
-        st.write(f"**{_iv_chg:+.2f}%**")
+        st.caption("IV change (pp)")
+        st.write(f"**{_iv_chg:+.2f}**")
     with _row2c:
         st.caption("Net Delta")
         st.write(f"**{_delta:.2f}**")
