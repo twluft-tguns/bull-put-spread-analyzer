@@ -21,6 +21,11 @@ def compute_dte(expiration: datetime.date) -> int:
     return (expiration - today).days
 
 
+def default_target_profit_pct(dte: int) -> float:
+    """Rule-of-thumb default: 50% when DTE ≤ 21, 80% when DTE > 21."""
+    return 50.0 if dte <= 21 else 80.0
+
+
 def compute_profit_metrics(entry_credit: float, current_debit: float) -> Tuple[float, float]:
     if entry_credit is None or current_debit is None:
         return 0.0, 0.0
@@ -715,7 +720,8 @@ def main():
         st.session_state.pop("last_live_fetch_time", None)
         st.session_state["iv_at_entry"] = float(data.get("iv_at_entry") or 0.0)
         st.session_state["iv_at_entry_baseline"] = float(data.get("iv_at_entry") or 0.0)
-        st.session_state["notes"] = data.get("notes") or ""
+        _loaded_dte = compute_dte(st.session_state["expiration_date"])
+        st.session_state["target_profit_pct"] = float(data.get("target_profit_pct") or default_target_profit_pct(_loaded_dte))
 
     if "ticker" not in st.session_state:
         st.session_state["ticker"] = "SPY"
@@ -1200,7 +1206,7 @@ def main():
 
     with manual_entry_col:
         st.markdown("#### 📝 Manual Entry")
-        st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by live fetch.")
+        st.caption("Enter when you open the trade (incl. IV at entry and target profit %). Not updated by live fetch.")
         current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
         current_trade_label = (st.session_state.get("trade_label") or "").strip()
         save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
@@ -1258,11 +1264,17 @@ def main():
             )
             st.session_state["iv_at_entry_baseline"] = iv_at_entry
 
-            notes = st.text_area(
-                "Notes / Context",
-                value=st.session_state.get("notes", "e.g., broader market trend, support/resistance levels, earnings dates, etc."),
-                height=120,
-                key="notes",
+            _dte_for_default = compute_dte(expiration_date)
+            _default_target = default_target_profit_pct(_dte_for_default)
+            target_profit_pct = st.number_input(
+                "Target profit (%)",
+                min_value=0.0,
+                max_value=200.0,
+                value=st.session_state.get("target_profit_pct", _default_target),
+                step=1.0,
+                format="%.0f",
+                key="target_profit_pct",
+                help="Profit % to aim for before closing. Defaults: 50% when DTE ≤ 21 days, 80% when DTE > 21 (rule-of-thumb).",
             )
 
         if save_trade_clicked:
@@ -1276,7 +1288,7 @@ def main():
                     "expiration_date": str(expiration_date),
                     "entry_credit": entry_credit,
                     "iv_at_entry": iv_at_entry,
-                    "notes": notes,
+                    "target_profit_pct": st.session_state.get("target_profit_pct", default_target_profit_pct(compute_dte(expiration_date))),
                 }
                 if save_target not in saved_trades:
                     payload["current_price"] = st.session_state.get("current_price", 440.0)
