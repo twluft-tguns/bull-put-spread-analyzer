@@ -652,7 +652,9 @@ def main():
                 st.session_state["schwab_token"] = loaded
                 st.session_state["auto_fetch_live_on_connect"] = True
 
-    # Apply any pending loaded trade data BEFORE widgets are created
+    # Apply any pending loaded trade data BEFORE widgets are created.
+    # Do NOT restore live fields (current_price, current_iv, etc.) from the payload—they may
+    # be from the wrong ticker (e.g. SPY). We refetch live data for the loaded trade's ticker.
     if "loaded_trade_data" in st.session_state:
         data = st.session_state.pop("loaded_trade_data")
         st.session_state["ticker"] = data["ticker"]
@@ -664,12 +666,10 @@ def main():
         else:
             st.session_state["expiration_date"] = exp_val
         st.session_state["entry_credit"] = float(data.get("entry_credit") or 0.0)
-        st.session_state["current_price"] = float(data.get("current_price") or 0.0)
-        st.session_state["current_debit_to_close"] = float(data.get("current_debit_to_close") or 0.0)
-        st.session_state["net_delta"] = float(data.get("net_delta") or 0.0)
-        st.session_state["net_theta"] = float(data.get("net_theta") or 0.0)
-        st.session_state["net_vega"] = float(data.get("net_vega") or 0.0)
-        st.session_state["current_iv"] = float(data.get("current_iv") or 0.0)
+        # Live data: clear so sidebar refetches for this ticker (avoids showing SPY data for AMZN, etc.)
+        for key in ("current_price", "current_debit_to_close", "net_delta", "net_theta", "net_vega", "current_iv"):
+            st.session_state.pop(key, None)
+        st.session_state.pop("last_live_fetch_time", None)
         st.session_state["iv_at_entry"] = float(data.get("iv_at_entry") or 0.0)
         st.session_state["iv_at_entry_baseline"] = float(data.get("iv_at_entry") or 0.0)
         st.session_state["notes"] = data.get("notes") or ""
@@ -852,6 +852,19 @@ def main():
         except Exception as e:
             saved_trades = {}
             st.error(f"Could not load saved trades: {e}")
+
+        # Auto-load first saved trade for this workspace *before* Schwab auto-fetch,
+        # so the ticker (and other fields) are set from the loaded trade when we fetch live data.
+        load_options = ["(none)"] + list(saved_trades.keys()) if saved_trades else ["(none)"]
+        first_trade_label = load_options[1] if len(load_options) > 1 else None
+        if (
+            first_trade_label
+            and st.session_state.get("last_auto_load_workspace") != workspace_key
+        ):
+            st.session_state["loaded_trade_data"] = saved_trades[first_trade_label]
+            st.session_state["trade_to_load"] = first_trade_label
+            st.session_state["last_auto_load_workspace"] = workspace_key
+            st.rerun()
 
         st.markdown("---")
 
