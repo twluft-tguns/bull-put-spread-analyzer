@@ -1295,8 +1295,6 @@ def main():
         st.caption("Net Theta")
         st.write(f"**{_theta:+.2f}**")
 
-    st.markdown("---")
-
     # Live data from Schwab (read-only; populated by Fetch Live Data / auto-fetch)
     current_price = st.session_state.get("current_price", 440.0)
     current_debit_to_close = st.session_state.get("current_debit_to_close", 0.40)
