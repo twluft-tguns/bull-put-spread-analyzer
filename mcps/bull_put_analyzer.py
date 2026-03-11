@@ -1455,7 +1455,7 @@ def main():
 
     with manual_entry_col:
         st.markdown("#### 📝 Manual Entry")
-        st.caption("Enter when you open the trade (incl. IV at entry and target profit %). Not updated by live fetch.")
+        st.caption("Enter when you open the trade (incl. short strike IV at entry and target profit %). Not updated by live fetch.")
         current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
         current_trade_label = (st.session_state.get("trade_label") or "").strip()
         save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
@@ -1503,13 +1503,14 @@ def main():
             )
 
             iv_at_entry = st.number_input(
-                "IV at Entry (%)",
+                "Short strike IV at entry (%)",
                 min_value=0.0,
                 max_value=200.0,
                 value=st.session_state.get("iv_at_entry", 25.0),
                 step=0.5,
                 format="%.2f",
                 key="iv_at_entry",
+                help="Implied volatility of the short put when you opened the trade. Used with current short strike IV to compute IV change.",
             )
             st.session_state["iv_at_entry_baseline"] = iv_at_entry
 
@@ -1548,7 +1549,7 @@ def main():
                     payload["current_iv"] = st.session_state.get("current_iv", 22.0)
                 try:
                     upsert_trade(workspace_key, save_target, payload)
-                    st.success(f"Saved manual entry to '{save_target}' (IV at Entry {iv_at_entry}%)")
+                    st.success(f"Saved manual entry to '{save_target}' (Short strike IV at entry {iv_at_entry}%)")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Save failed: {e}")
@@ -1593,7 +1594,7 @@ def main():
 
     _row2a, _row2b, _row2c = st.columns(3)
     with _row2a:
-        st.caption("Current IV")
+        st.caption("Short strike IV (current)")
         st.write(f"**{_iv:.2f}%**")
     with _row2b:
         st.caption("IV change")
@@ -1601,7 +1602,7 @@ def main():
             st.write(f"**{_iv_chg:+.2f}%**")
         else:
             st.write("**—**")
-            st.caption("Enter IV at entry above")
+            st.caption("Enter short strike IV at entry above")
     with _row2c:
         st.caption("Net Delta")
         st.write(f"**{_delta:.2f}**")
@@ -1612,7 +1613,7 @@ def main():
     net_delta = st.session_state.get("net_delta", 0.20)
     net_vega = st.session_state.get("net_vega", -0.40)
     current_iv = st.session_state.get("current_iv", 22.0)
-    # IV at entry: baseline for IV Change = exactly what's in Manual Entry "IV at Entry (%)"
+    # Short strike IV at entry: baseline for IV Change = Manual Entry "Short strike IV at entry (%)"
     iv_at_entry = st.session_state.get("iv_at_entry_baseline", st.session_state.get("iv_at_entry", 25.0))
 
     # Derived metrics (used by recommendation and Position Snapshot)
