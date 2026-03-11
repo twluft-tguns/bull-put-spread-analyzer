@@ -106,7 +106,7 @@ def get_recommendation(
             color = "#16a34a"  # green
         else:
             recommendation = "⚠️ Close Now or Roll"
-            color = "#f97316"  # orange
+            color = "#f59e0b"  # amber
         reasons.extend(close_signals)
     else:
         # No strong close signal – decide between mild hold and monitor
@@ -176,6 +176,7 @@ def explain_recommendation_for_novice(recommendation: str, reasons: List[str]) -
 
 
 def render_recommendation_box(recommendation: str, color: str, reasons: List[str]):
+    """Render only the recommendation text in a colored box (no bullet list)."""
     box_style = f"""
     <div style="
         border-radius: 10px;
@@ -184,15 +185,9 @@ def render_recommendation_box(recommendation: str, color: str, reasons: List[str
         border-left: 8px solid {color};
         margin-bottom: 1rem;
     ">
-        <h3 style="margin: 0 0 0.5rem 0; color: {color}; font-weight: 700;">
+        <h3 style="margin: 0; color: {color}; font-weight: 700;">
             {recommendation}
         </h3>
-        <ul style="margin: 0 0 0 1.2rem; padding-left: 0;">
-    """
-    for r in reasons:
-        box_style += f"<li style='margin-bottom: 0.25rem; color: #1f2933;'>{r}</li>"
-    box_style += """
-        </ul>
     </div>
     """
     st.markdown(box_style, unsafe_allow_html=True)
