@@ -1097,7 +1097,7 @@ def main():
                             st.session_state["net_theta"] = live["net_theta"]
                             st.session_state["net_vega"] = live["net_vega"]
                             st.session_state["current_iv"] = live["current_iv"]
-                            # Check recommendation and send Telegram if Close Now
+                            # Check recommendation and send Telegram only when it changes to Close Now or Close Now or Roll
                             entry_c = st.session_state.get("entry_credit") or 0.0
                             iv_entry = st.session_state.get("iv_at_entry") or 0.0
                             dte = compute_dte(exp)
@@ -1110,13 +1110,15 @@ def main():
                                 live["net_delta"], live["net_theta"], iv_chg, near_short,
                                 target_profit_pct=st.session_state.get("target_profit_pct"),
                             )
-                            if rec in ("✅ Close Now", "⚠️ Close Now or Roll"):
+                            last_rec = st.session_state.get("last_telegram_recommendation")
+                            if rec in ("✅ Close Now", "⚠️ Close Now or Roll") and rec != last_rec:
                                 trade_name = st.session_state.get("trade_label", "").strip() or f"{ticker_s} {short_s}/{long_s}"
                                 send_telegram_message(
                                     f"Bull Put Spread Alert – {rec}\n"
                                     f"Trade: {trade_name}\n"
                                     f"Reasons: " + "; ".join(reasons[:3])
                                 )
+                            st.session_state["last_telegram_recommendation"] = rec
                     except Exception:
                         pass
                     st.session_state["last_live_fetch_time"] = time.time()
@@ -1227,7 +1229,7 @@ def main():
                     "Auto-refresh live data",
                     value=st.session_state.get("auto_refresh", False),
                     key="auto_refresh",
-                    help="Refresh live data at the chosen interval and get Telegram alerts when recommendation is Close Now.",
+                    help="Refresh live data at the chosen interval and get Telegram alerts when the recommendation changes to Close Now or Close Now or Roll.",
                 )
                 st.session_state["auto_refresh_prev"] = auto_refresh
                 if auto_refresh:
@@ -1238,7 +1240,7 @@ def main():
                         key="auto_refresh_interval",
                     )
                     if has_telegram_config():
-                        st.caption("Telegram alerts enabled for Close Now / Close Now or Roll.")
+                        st.caption("Telegram alerts when recommendation changes to Close Now / Close Now or Roll.")
                     else:
                         st.caption("Add [telegram] bot_token and chat_id in secrets for alerts. For alerts when the app is closed, run: python -m mcps.monitor")
                     if not prev_auto_refresh:
@@ -1246,6 +1248,7 @@ def main():
                         st.rerun()
                 else:
                     st.session_state.pop("last_live_autorefresh_tick", None)
+                    st.session_state.pop("last_telegram_recommendation", None)
             else:
                 auth_url = build_schwab_auth_url()
                 st.markdown(
