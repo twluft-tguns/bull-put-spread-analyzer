@@ -1565,9 +1565,6 @@ def main():
                     saved_expiration = st.session_state.get("expiration_date")
                     saved_short = st.session_state.get("short_put_strike")
                     saved_long = st.session_state.get("long_put_strike")
-                    saved_iv_at_entry = st.session_state.get("iv_at_entry")
-                    saved_entry_credit = st.session_state.get("entry_credit")
-                    saved_target_profit_pct = st.session_state.get("target_profit_pct")
                     live = fetch_schwab_live_data(
                         st.session_state["ticker"],
                         saved_expiration or datetime.date.today() + datetime.timedelta(days=30),
@@ -1594,19 +1591,7 @@ def main():
                         st.session_state["current_iv"] = live["current_iv"]
                         st.session_state["last_live_fetch_time"] = time.time()
                         st.success("Live data loaded.")
-                    if saved_expiration is not None:
-                        st.session_state["expiration_date"] = saved_expiration
-                    if saved_short is not None:
-                        st.session_state["short_put_strike"] = saved_short
-                    if saved_long is not None:
-                        st.session_state["long_put_strike"] = saved_long
-                    if saved_iv_at_entry is not None:
-                        st.session_state["iv_at_entry"] = saved_iv_at_entry
-                        st.session_state["iv_at_entry_baseline"] = saved_iv_at_entry
-                    if saved_entry_credit is not None:
-                        st.session_state["entry_credit"] = saved_entry_credit
-                    if saved_target_profit_pct is not None:
-                        st.session_state["target_profit_pct"] = saved_target_profit_pct
+                    # Do not modify widget keys (expiration_date, short_put_strike, etc.) after they are rendered—Streamlit forbids it. Rerun to refresh; form values stay as-is.
                     st.rerun()
                 except Exception as e:
                     st.error(str(e))
