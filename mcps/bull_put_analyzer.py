@@ -1169,12 +1169,16 @@ def main():
                             )
                             last_rec = st.session_state.get("last_telegram_recommendation")
                             if rec in ("✅ Close Now", "⚠️ Close Now or Roll") and rec != last_rec:
-                                trade_name = st.session_state.get("trade_label", "").strip() or f"{ticker_s} {short_s}/{long_s}"
-                                send_telegram_message(
-                                    f"Bull Put Spread Alert – {rec}\n"
-                                    f"Trade: {trade_name}\n"
-                                    f"Reasons: " + "; ".join(reasons[:3])
-                                )
+                                # Only send if this trade has Telegram alerts enabled
+                                trade_to_load = st.session_state.get("trade_to_load") or ""
+                                payload = saved_trades.get(trade_to_load, {}) if trade_to_load and trade_to_load != "(none)" else {}
+                                if payload.get("telegram_alerts_enabled", True):
+                                    trade_name = st.session_state.get("trade_label", "").strip() or f"{ticker_s} {short_s}/{long_s}"
+                                    send_telegram_message(
+                                        f"Bull Put Spread Alert – {rec}\n"
+                                        f"Trade: {trade_name}\n"
+                                        f"Reasons: " + "; ".join(reasons[:3])
+                                    )
                             st.session_state["last_telegram_recommendation"] = rec
                     except Exception:
                         pass
@@ -1361,6 +1365,27 @@ def main():
             key="trade_to_load",
         )
 
+        def _persist_telegram_pref(workspace_key: str, trade_label: str) -> None:
+            key = "tg_" + trade_label
+            new_val = st.session_state.get(key, True)
+            trades = list_trades(workspace_key)
+            payload = dict(trades.get(trade_label, {}))
+            payload["telegram_alerts_enabled"] = bool(new_val)
+            upsert_trade(workspace_key, trade_label, payload)
+
+        if saved_trades:
+            st.caption("Telegram alerts")
+            for lbl in saved_trades.keys():
+                default_on = saved_trades[lbl].get("telegram_alerts_enabled", True)
+                st.checkbox(
+                    f"Alert for \"{lbl}\"",
+                    value=default_on,
+                    key="tg_" + lbl,
+                    on_change=_persist_telegram_pref,
+                    args=(workspace_key, lbl),
+                    help="Send Telegram when recommendation changes to Close Now or Close Now or Roll for this trade.",
+                )
+
         # Keep ticker in sync with selected trade label so it can't revert to SPY (e.g. after refresh or sidebar run order)
         if trade_to_load and trade_to_load != "(none)":
             parsed = _ticker_from_trade_label(trade_to_load)
@@ -1480,6 +1505,7 @@ def main():
                     "entry_credit": entry_credit,
                     "iv_at_entry": iv_at_entry,
                     "target_profit_pct": st.session_state.get("target_profit_pct", default_target_profit_pct(compute_dte(expiration_date))),
+                    "telegram_alerts_enabled": st.session_state.get("tg_" + save_target, existing.get("telegram_alerts_enabled", True)),
                 }
                 if save_target not in saved_trades:
                     payload["current_price"] = st.session_state.get("current_price", 440.0)
