@@ -1388,18 +1388,19 @@ def main():
             payload["telegram_alerts_enabled"] = bool(new_val)
             upsert_trade(workspace_key, trade_label, payload)
 
-        if saved_trades:
+        current_loaded = st.session_state.get("trade_to_load", "(none)")
+        if saved_trades and current_loaded != "(none)" and current_loaded in saved_trades:
             st.caption("Telegram alerts")
-            for lbl in saved_trades.keys():
-                default_on = saved_trades[lbl].get("telegram_alerts_enabled", True)
-                st.checkbox(
-                    "Alert",
-                    value=default_on,
-                    key="tg_" + lbl,
-                    on_change=_persist_telegram_pref,
-                    args=(workspace_key, lbl),
-                    help=f'Send Telegram when recommendation changes to Close Now or Close Now or Roll for "{lbl}".',
-                )
+            lbl = current_loaded
+            default_on = saved_trades[lbl].get("telegram_alerts_enabled", True)
+            st.checkbox(
+                "Alert",
+                value=default_on,
+                key="tg_" + lbl,
+                on_change=_persist_telegram_pref,
+                args=(workspace_key, lbl),
+                help=f'Send Telegram when recommendation changes to Close Now or Close Now or Roll for "{lbl}".',
+            )
 
     with manual_entry_col:
         st.markdown("#### 📝 Manual Entry")
