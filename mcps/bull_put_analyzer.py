@@ -36,10 +36,21 @@ def compute_profit_metrics(entry_credit: float, current_debit: float) -> Tuple[f
 
 
 def compute_iv_change(current_iv: float, entry_iv: float) -> float:
-    """Return IV change as relative percent: (current - entry) / entry * 100. E.g. 39.53 vs 39.78 = -0.63%."""
-    if current_iv is None or entry_iv is None or entry_iv == 0:
+    """Return IV change as relative percent: (current - entry) / entry * 100. E.g. 39.53 vs 39.78 = -0.63%.
+    Normalizes decimal (0.22) vs percent (22) so both are treated as percent before computing."""
+    if current_iv is None or entry_iv is None:
         return 0.0
-    return (current_iv - entry_iv) / entry_iv * 100.0
+    # Normalize to percent: if value is in (0, 2) assume decimal (e.g. 0.3953), else assume already percent (e.g. 39.53)
+    def to_pct(v: float) -> float:
+        if v is None:
+            return 0.0
+        return (v * 100.0) if 0 < abs(v) < 2 else v
+
+    cur = to_pct(current_iv)
+    ent = to_pct(entry_iv)
+    if ent == 0:
+        return 0.0
+    return (cur - ent) / ent * 100.0
 
 
 def is_price_near_short_strike(underlying: float, short_strike: float, tolerance_pct: float = 1.0) -> bool:
