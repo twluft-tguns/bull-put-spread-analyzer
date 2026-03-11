@@ -1155,52 +1155,6 @@ def main():
                     except Exception as e:
                         st.error(f"Delete failed: {e}")
 
-        # Compact summary under buttons: live metrics in 4 rows of 2
-        _exp = st.session_state.get("expiration_date") or (datetime.date.today() + datetime.timedelta(days=30))
-        _entry_c = st.session_state.get("entry_credit", 0.0) or 0.0
-        _price = st.session_state.get("current_price", 0.0) or 0.0
-        _debit = st.session_state.get("current_debit_to_close", 0.0) or 0.0
-        _iv = st.session_state.get("current_iv", 0.0) or 0.0
-        _iv_entry = st.session_state.get("iv_at_entry_baseline", st.session_state.get("iv_at_entry", 0.0)) or 0.0
-        _delta = st.session_state.get("net_delta", 0.0) or 0.0
-        _theta = st.session_state.get("net_theta", 0.0) or 0.0
-        _dte = compute_dte(_exp)
-        _profit, _profit_pct = compute_profit_metrics(_entry_c, _debit)
-        _iv_chg = compute_iv_change(_iv, _iv_entry)
-
-        st.markdown("---")
-        _r1a, _r1b = st.columns(2)
-        with _r1a:
-            st.caption("Days to expiration")
-            st.write(f"**{_dte} days**" if _dte >= 0 else f"**{_dte} days** (past)")
-        with _r1b:
-            st.caption("Underlying price")
-            st.write(f"**${_price:,.2f}**")
-
-        _r2a, _r2b = st.columns(2)
-        with _r2a:
-            st.caption("Current debit to close")
-            st.write(f"**${_debit:,.2f}**")
-        with _r2b:
-            st.caption("Potential profit")
-            st.write(f"**${_profit:,.2f}** ({_profit_pct:,.1f}%)")
-
-        _r3a, _r3b = st.columns(2)
-        with _r3a:
-            st.caption("Current IV")
-            st.write(f"**{_iv:.2f}%**")
-        with _r3b:
-            st.caption("IV change")
-            st.write(f"**{_iv_chg:+.2f}%**")
-
-        _r4a, _r4b = st.columns(2)
-        with _r4a:
-            st.caption("Net Delta")
-            st.write(f"**{_delta:.2f}**")
-        with _r4b:
-            st.caption("Net Theta")
-            st.write(f"**{_theta:+.2f}**")
-
     with manual_entry_col:
         st.markdown("#### 📝 Manual Entry")
         st.caption("Enter when you open the trade (incl. IV at entry and notes). Not updated by live fetch.")
@@ -1295,6 +1249,53 @@ def main():
                     st.error(f"Save failed: {e}")
             else:
                 st.warning("Select a trade in the dropdown to save to, or enter a new trade name.")
+
+    # Divider line under Save Trade, then fetched/calculated metrics in 2 rows (4+4)
+    st.markdown(
+        '<hr style="border: none; border-top: 1px solid #374151; margin: 16px 0 12px 0; opacity: 0.6;">',
+        unsafe_allow_html=True,
+    )
+    _exp = st.session_state.get("expiration_date") or (datetime.date.today() + datetime.timedelta(days=30))
+    _entry_c = st.session_state.get("entry_credit", 0.0) or 0.0
+    _price = st.session_state.get("current_price", 0.0) or 0.0
+    _debit = st.session_state.get("current_debit_to_close", 0.0) or 0.0
+    _iv = st.session_state.get("current_iv", 0.0) or 0.0
+    _iv_entry = st.session_state.get("iv_at_entry_baseline", st.session_state.get("iv_at_entry", 0.0)) or 0.0
+    _delta = st.session_state.get("net_delta", 0.0) or 0.0
+    _theta = st.session_state.get("net_theta", 0.0) or 0.0
+    _dte = compute_dte(_exp)
+    _profit, _profit_pct = compute_profit_metrics(_entry_c, _debit)
+    _iv_chg = compute_iv_change(_iv, _iv_entry)
+
+    _row1a, _row1b, _row1c, _row1d = st.columns(4)
+    with _row1a:
+        st.caption("Days to expiration")
+        st.write(f"**{_dte} days**" if _dte >= 0 else f"**{_dte} days** (past)")
+    with _row1b:
+        st.caption("Underlying price")
+        st.write(f"**${_price:,.2f}**")
+    with _row1c:
+        st.caption("Current debit to close")
+        st.write(f"**${_debit:,.2f}**")
+    with _row1d:
+        st.caption("Potential profit")
+        st.write(f"**${_profit:,.2f}** ({_profit_pct:,.1f}%)")
+
+    _row2a, _row2b, _row2c, _row2d = st.columns(4)
+    with _row2a:
+        st.caption("Current IV")
+        st.write(f"**{_iv:.2f}%**")
+    with _row2b:
+        st.caption("IV change")
+        st.write(f"**{_iv_chg:+.2f}%**")
+    with _row2c:
+        st.caption("Net Delta")
+        st.write(f"**{_delta:.2f}**")
+    with _row2d:
+        st.caption("Net Theta")
+        st.write(f"**{_theta:+.2f}**")
+
+    st.markdown("---")
 
     # Live data from Schwab (read-only; populated by Fetch Live Data / auto-fetch)
     current_price = st.session_state.get("current_price", 440.0)
