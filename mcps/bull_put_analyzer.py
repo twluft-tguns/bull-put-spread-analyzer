@@ -143,6 +143,51 @@ def get_recommendation(
     return recommendation, color, reasons
 
 
+def get_conditions_checklist(
+    dte: int,
+    profit_pct: float,
+    target_profit_pct: float | None,
+    net_delta: float,
+    net_theta: float,
+    iv_change: float,
+    price_near_short: bool,
+) -> List[Tuple[str, bool]]:
+    """Return list of (condition_label, met) in order: target profit first, then other rule-of-thumb conditions."""
+    theta_threshold = 1.0
+    iv_rise_threshold = 5.0
+    losing_money = profit_pct < 0
+
+    conditions: List[Tuple[str, bool]] = []
+
+    # 1. Target profit achieved (top)
+    if target_profit_pct is not None:
+        met = profit_pct >= target_profit_pct
+        conditions.append((f"Target profit achieved ({target_profit_pct:.0f}%)", met))
+
+    # 2. High profit (≥ 80%)
+    conditions.append(("High profit (≥ 80%)", profit_pct >= 80))
+
+    # 3. Solid profit (≥ 50%) with ≤ 21 DTE
+    conditions.append(("Solid profit (≥ 50%) with ≤ 21 DTE", profit_pct >= 50 and dte <= 21))
+
+    # 4. Very low DTE (< 7)
+    conditions.append(("Very low DTE (< 7 days)", dte < 7))
+
+    # 5. Net delta too directional
+    conditions.append((f"Net delta too directional (|Δ| > 0.50)", abs(net_delta) > 0.50))
+
+    # 6. Net theta very low
+    conditions.append(("Net theta very low (little time decay left)", abs(net_theta) < theta_threshold))
+
+    # 7. IV risen ≥ 5%
+    conditions.append((f"IV has risen ≥ {iv_rise_threshold}%", iv_change >= iv_rise_threshold))
+
+    # 8. Losing and price near short strike
+    conditions.append(("Losing money and price near short strike", losing_money and price_near_short))
+
+    return conditions
+
+
 def explain_recommendation_for_novice(
     recommendation: str,
     reasons: List[str],
@@ -1436,6 +1481,18 @@ def main():
     )
     reasoning_md = "<div style='border-radius: 8px; padding: 1rem 1.25rem; background-color: #f9fafb; border: 1px solid #e5e7eb;'>"
     reasoning_md += "<p style='margin: 0 0 0.75rem 0; color: #111827;'>" + novice_explanations[0] + "</p>"
+
+    # Conditions checklist with green checkmarks (for Hold and Monitor or Close)
+    if "Hold" in recommendation or "Close" in recommendation:
+        conditions = get_conditions_checklist(
+            dte, profit_pct, target_pct, net_delta, net_theta, iv_change, price_near_short
+        )
+        reasoning_md += "<div style='margin-bottom: 0.75rem;'>"
+        for label, met in conditions:
+            check = "<span style='color: #16a34a; font-weight: bold;'>✓</span>" if met else "<span style='color: #9ca3af; margin-right: 0.35rem;'>—</span>"
+            reasoning_md += f"<div style='margin-bottom: 0.35rem; color: #374151; line-height: 1.5;'>{check} {label}</div>"
+        reasoning_md += "</div>"
+
     reasoning_md += "<ul style='margin: 0 0 0 1.2rem; padding-left: 0;'>"
     for ex in novice_explanations[1:]:
         clean = ex.replace("**", "")  # strip markdown bold for HTML display
