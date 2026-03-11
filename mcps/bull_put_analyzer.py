@@ -1054,12 +1054,6 @@ def main():
             except Exception:
                 pass
 
-        st.markdown("**Profile**")
-        if has_supabase_config():
-            st.success("Cloud storage enabled (Supabase).")
-        else:
-            st.warning("Cloud storage not configured. Using local file storage.")
-
         known_keys = list_workspace_keys()
         ensure_workspace_key(known_keys)
 
@@ -1071,15 +1065,15 @@ def main():
             except ValueError:
                 default_index = 0
             sel = st.selectbox(
-                "Workspace Key (keep this private)",
+                "Profile (keep this private)",
                 options=options,
                 index=default_index,
                 key="workspace_key_select",
-                help="Select a workspace or add a new one. Your saved trades are grouped by workspace.",
+                help="Select a profile or add a new one. Your saved trades are grouped by profile.",
             )
             if sel == "(Add new...)":
                 new_key = st.text_input(
-                    "New workspace key",
+                    "New profile",
                     value="",
                     key="workspace_key_new",
                     placeholder="Type a new key and save a trade to add it to the list",
@@ -1090,10 +1084,10 @@ def main():
             st.session_state["workspace_key"] = workspace_key
         else:
             workspace_key = st.text_input(
-                "Workspace Key (keep this private)",
+                "Profile (keep this private)",
                 value=st.session_state.get("workspace_key", ""),
                 key="workspace_key",
-                help="This key separates your saved trades from other users. Save a trade to create your first workspace.",
+                help="This key separates your saved trades from other users. Save a trade to create your first profile.",
             )
 
         # Keep URL in sync so the key survives reruns (e.g. after Fetch Live Data).
