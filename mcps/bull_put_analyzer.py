@@ -18,7 +18,13 @@ SCHWAB_TOKEN_FILE = Path("schwab_token.json")
 
 
 def compute_dte(expiration: datetime.date) -> int:
-    today = datetime.date.today()
+    """Days to expiration using US Eastern calendar date so DTE matches the options market."""
+    try:
+        from zoneinfo import ZoneInfo
+        now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
+        today = now_et.date()
+    except Exception:
+        today = datetime.date.today()
     return (expiration - today).days
 
 
