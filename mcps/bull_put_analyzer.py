@@ -117,7 +117,7 @@ def get_recommendation(
             reasons.extend(close_signals)
         else:
             recommendation = "⚠️ Close Now or Roll"
-            color = "#f59e0b"  # amber
+            color = "#dc2626"  # red
             reasons.extend(close_signals)
     else:
         # No strong close signal – decide between mild hold and monitor
@@ -152,10 +152,9 @@ def get_conditions_checklist(
     iv_change: float,
     price_near_short: bool,
 ) -> List[Tuple[str, bool]]:
-    """Return list of (condition_label, met) in order: target profit first, then other rule-of-thumb conditions."""
+    """Return list of (condition_label, met) for close/hold: target profit first, then other conditions (no roll criterion)."""
     theta_threshold = 1.0
     iv_rise_threshold = 5.0
-    losing_money = profit_pct < 0
 
     conditions: List[Tuple[str, bool]] = []
 
@@ -182,10 +181,17 @@ def get_conditions_checklist(
     # 7. IV risen ≥ 5%
     conditions.append((f"IV has risen ≥ {iv_rise_threshold}%", iv_change >= iv_rise_threshold))
 
-    # 8. Losing and price near short strike — criterion to consider rolling (or closing)
-    conditions.append(("Losing money, price near short strike (consider roll)", losing_money and price_near_short))
+    # (Roll criterion "Losing money, price near short strike" only shown when recommendation is Close Now or Roll)
 
     return conditions
+
+
+def get_roll_conditions_checklist(profit_pct: float, price_near_short: bool) -> List[Tuple[str, bool]]:
+    """Return list of (condition_label, met) for roll recommendation only."""
+    losing_money = profit_pct < 0
+    return [
+        ("Losing money, price near short strike", losing_money and price_near_short),
+    ]
 
 
 def explain_recommendation_for_novice(
@@ -1482,8 +1488,18 @@ def main():
     reasoning_md = "<div style='border-radius: 8px; padding: 1rem 1.25rem; background-color: #f9fafb; border: 1px solid #e5e7eb;'>"
     reasoning_md += "<p style='margin: 0 0 0.75rem 0; color: #111827;'>" + novice_explanations[0] + "</p>"
 
-    # Conditions checklist with green checkmarks (for Hold and Monitor or Close)
-    if "Hold" in recommendation or "Close" in recommendation:
+    # Conditions checklist with green checkmarks
+    if "Close Now or Roll" in recommendation:
+        # Roll recommendation: show only roll criteria in a red-tinted section
+        roll_conditions = get_roll_conditions_checklist(profit_pct, price_near_short)
+        reasoning_md += "<p style='margin: 0 0 0.35rem 0; color: #111827; font-weight: 600;'>Criteria to roll</p>"
+        reasoning_md += "<div style='margin-bottom: 0.75rem;'>"
+        for label, met in roll_conditions:
+            check = "<span style='color: #16a34a; font-weight: bold;'>✓</span>" if met else "<span style='color: #9ca3af;'>—</span>"
+            reasoning_md += f"<div style='margin-bottom: 0.35rem; color: #374151; line-height: 1.5;'>{check} {label}</div>"
+        reasoning_md += "</div>"
+    elif "Hold" in recommendation or "Close Now" in recommendation:
+        # Close or Hold: show close/hold conditions (no roll criterion)
         conditions = get_conditions_checklist(
             dte, profit_pct, target_pct, net_delta, net_theta, iv_change, price_near_short
         )
