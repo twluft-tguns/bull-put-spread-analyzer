@@ -1306,52 +1306,11 @@ def main():
     # IV at entry: baseline for IV Change = exactly what's in Manual Entry "IV at Entry (%)"
     iv_at_entry = st.session_state.get("iv_at_entry_baseline", st.session_state.get("iv_at_entry", 25.0))
 
-    # Derived metrics
+    # Derived metrics (used by recommendation and Position Snapshot)
     dte = compute_dte(expiration_date)
     current_profit, profit_pct = compute_profit_metrics(entry_credit, current_debit_to_close)
     iv_change = compute_iv_change(current_iv, iv_at_entry)
     price_near_short = is_price_near_short_strike(current_price, short_put_strike)
-
-    # --- Top Metrics Row ---
-    col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
-
-    with col1:
-        st.metric(
-            label="Days to Expiration (DTE)",
-            value=f"{dte} days" if dte >= 0 else f"{dte} days (past)",
-        )
-    with col2:
-        st.metric(
-            label="Current Profit ($ per spread)",
-            value=f"${current_profit:,.2f}",
-            delta=f"{profit_pct:,.1f}%",
-        )
-    with col3:
-        st.metric(
-            label="Current Underlying Price",
-            value=f"${current_price:,.2f}",
-        )
-    with col4:
-        st.metric(
-            label="Current IV (live)",
-            value=f"{current_iv:.2f}%",
-        )
-    with col5:
-        st.metric(
-            label="IV Change",
-            value=f"{iv_change:+.2f}%",
-            delta=f"from {iv_at_entry:.2f}% at entry",
-        )
-    with col6:
-        st.metric(
-            label="Net Delta",
-            value=f"{net_delta:.2f}",
-        )
-    with col7:
-        st.metric(
-            label="Net Theta",
-            value=f"{net_theta:+.2f}",
-        )
 
     st.markdown("---")
 
