@@ -189,7 +189,7 @@ def explain_recommendation_for_novice(
             else:
                 explanations.append(r)
         elif "You haven't reached your target" in r:
-            explanations.append(r)
+            pass  # intro already says this; skip bullet
         elif "high profit" in r_lower and "80%" in r:
             explanations.append("**You’ve captured most of the profit (80%+).** Closing now locks in gains before the market can change. Many traders don’t wait for 100%.")
         elif "solid profit" in r_lower and "50%" in r and "dte" in r_lower:
@@ -211,7 +211,7 @@ def explain_recommendation_for_novice(
         elif "monitor" in r_lower and "no explicit close" in r_lower:
             explanations.append("**No clear close signal yet.** Conditions can change quickly. Keep an eye on the stock, volatility, and the key numbers above, and be ready to close or roll if things worsen.")
         elif r.strip().startswith("DTE:") or "dte:" in r_lower:
-            explanations.append(f"**Quick snapshot:** {r.strip()}")
+            pass  # skip snapshot bullet; intro/summary already sufficient
         else:
             explanations.append(r)
 
