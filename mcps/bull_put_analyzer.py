@@ -55,6 +55,7 @@ def get_recommendation(
     net_theta: float,
     iv_change: float,
     price_near_short: bool,
+    target_profit_pct: float | None = None,
 ) -> Tuple[str, str, List[str]]:
     reasons: List[str] = []
     close_signals: List[str] = []
@@ -100,14 +101,24 @@ def get_recommendation(
 
     # Aggregate recommendation
     if close_signals:
-        # Distinguish between locking gains vs. defensive close
-        if current_profit >= 0:
+        # Below target and only one condition: recommend Hold, not Close
+        if target_profit_pct is not None and profit_pct < target_profit_pct and len(close_signals) < 2:
+            recommendation = "🟡 Hold and Monitor"
+            color = "#eab308"  # yellow
+            reasons.append(
+                f"You haven't reached your target profit ({target_profit_pct:.0f}%) yet (current: {profit_pct:.1f}%). "
+                "Only one condition suggests closing, so we recommend holding until you reach your target or more conditions develop."
+            )
+            reasons.append("Condition that was met: " + close_signals[0])
+        # Hit target OR multiple conditions: recommend Close (or Close/Roll)
+        elif current_profit >= 0:
             recommendation = "✅ Close Now"
             color = "#16a34a"  # green
+            reasons.extend(close_signals)
         else:
             recommendation = "⚠️ Close Now or Roll"
             color = "#f59e0b"  # amber
-        reasons.extend(close_signals)
+            reasons.extend(close_signals)
     else:
         # No strong close signal – decide between mild hold and monitor
         if 0 <= profit_pct < 50 and dte > 7:
@@ -145,7 +156,10 @@ def explain_recommendation_for_novice(
     elif "Close Now or Roll" in recommendation:
         intro = "Why consider closing or rolling? This trade is in a risk zone: closing can cut the loss, and rolling can give you more time and a better strike or expiration."
     elif "Hold" in recommendation:
-        intro = "Why hold? None of our close/roll rules are firing yet, so you can afford to keep the trade on—as long as you keep an eye on it."
+        if reasons and any("You haven't reached your target" in r for r in reasons):
+            intro = "Why hold? You haven't hit your target profit yet, and only one condition suggests closing. We recommend holding until you reach your target or more conditions develop."
+        else:
+            intro = "Why hold? None of our close/roll rules are firing yet, so you can afford to keep the trade on—as long as you keep an eye on it."
     else:
         intro = "What this means: The suggestion above is based on common rules of thumb for managing bull put spreads."
 
@@ -154,7 +168,29 @@ def explain_recommendation_for_novice(
         explanations.append(f"You've reached your target of {target_profit_pct:.0f}% profit (current: {profit_pct:.1f}%).")
     for r in reasons:
         r_lower = r.lower()
-        if "high profit" in r_lower and "80%" in r:
+        # "Hold" case: one condition met but below target — show which condition in plain language
+        if r.strip().startswith("Condition that was met:"):
+            sub = r.strip()[len("Condition that was met:"):].strip()
+            sub_lower = sub.lower()
+            if "theta" in sub_lower and "very low" in sub_lower:
+                explanations.append("The one condition that was met: You're barely earning any time decay; there's little extra benefit to holding.")
+            elif "net delta" in sub_lower:
+                explanations.append("The one condition that was met: Your spread is acting very directional (high delta).")
+            elif "dte < 7" in sub_lower or "very low dte" in sub_lower:
+                explanations.append("The one condition that was met: Very little time left (under 7 days); gamma risk is elevated.")
+            elif "high profit" in sub_lower or "80%" in sub:
+                explanations.append("The one condition that was met: You've captured most of the profit (80%+).")
+            elif "solid profit" in sub_lower or "50%" in sub:
+                explanations.append("The one condition that was met: Good profit (50%+) with 21 days or less to go.")
+            elif "volatility" in sub_lower or "iv" in sub_lower:
+                explanations.append("The one condition that was met: Volatility (IV) has increased.")
+            elif "losing money" in sub_lower:
+                explanations.append("The one condition that was met: You're in a loss and the stock is near your short strike.")
+            else:
+                explanations.append(r)
+        elif "You haven't reached your target" in r:
+            explanations.append(r)
+        elif "high profit" in r_lower and "80%" in r:
             explanations.append("**You’ve captured most of the profit (80%+).** Closing now locks in gains before the market can change. Many traders don’t wait for 100%.")
         elif "solid profit" in r_lower and "50%" in r and "dte" in r_lower:
             explanations.append("**Good profit (50%+) with 21 days or less to go.** The remaining upside is often small compared to the risk of a quick move. Closing here is a common choice.")
@@ -988,6 +1024,7 @@ def main():
                             rec, _, reasons = get_recommendation(
                                 dte, profit_pct, current_profit,
                                 live["net_delta"], live["net_theta"], iv_chg, near_short,
+                                target_profit_pct=st.session_state.get("target_profit_pct"),
                             )
                             if rec in ("✅ Close Now", "⚠️ Close Now or Roll"):
                                 trade_name = st.session_state.get("trade_label", "").strip() or f"{ticker_s} {short_s}/{long_s}"
@@ -1385,6 +1422,7 @@ def main():
         net_theta=net_theta,
         iv_change=iv_change,
         price_near_short=price_near_short,
+        target_profit_pct=st.session_state.get("target_profit_pct"),
     )
 
     st.subheader("Exit Recommendation")
