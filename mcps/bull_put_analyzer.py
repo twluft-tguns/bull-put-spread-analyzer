@@ -1267,7 +1267,7 @@ def main():
     price_near_short = is_price_near_short_strike(current_price, short_put_strike)
 
     # --- Top Metrics Row ---
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 
     with col1:
         st.metric(
@@ -1298,9 +1298,13 @@ def main():
         )
     with col6:
         st.metric(
-            label="Net Delta / Theta",
+            label="Net Delta",
             value=f"{net_delta:.2f}",
-            delta=f"Theta {net_theta:+.2f}",
+        )
+    with col7:
+        st.metric(
+            label="Net Theta",
+            value=f"{net_theta:+.2f}",
         )
 
     st.markdown("---")

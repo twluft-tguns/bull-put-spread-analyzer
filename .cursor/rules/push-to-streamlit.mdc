@@ -1,0 +1,18 @@
+---
+description: After editing Bull Put Spread Analyzer code, push to Streamlit and confirm to the user
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Push to Streamlit After Code Changes
+
+When you make any code changes to the Bull Put Spread Analyzer app (this repo), you **must**:
+
+1. **Push to origin** so Streamlit Cloud deploys the update:
+   - `cd` to the app root: `C:\Users\twluf\BullPutSpreadAnalyzer\bull-put-spread-analyzer`
+   - Stage changed files: `git add <paths>`
+   - Commit with a short message: `git commit -m "Brief description"`
+   - Push: `git push origin main`
+2. **Tell the user** in your reply: e.g. "I've pushed the changes to Streamlit; the app will redeploy with the update."
+
+Use PowerShell syntax (semicolons between commands, not `&&`). If the working tree is clean or push says "Everything up-to-date", still confirm that to the user.
