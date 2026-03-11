@@ -60,6 +60,17 @@ def is_price_near_short_strike(underlying: float, short_strike: float, tolerance
     return diff_pct <= tolerance_pct
 
 
+def _ticker_from_trade_label(label: str) -> str | None:
+    """Parse ticker from trade label (e.g. 'AMZN 3/3' -> 'AMZN'). Returns None if no valid ticker."""
+    if not (label or "").strip():
+        return None
+    parts = (label or "").strip().split()
+    first = parts[0] if parts else ""
+    if first and len(first) <= 5 and first.isalpha():
+        return first.upper()
+    return next((p.upper() for p in parts if len(p) <= 5 and p.isalpha()), None)
+
+
 def get_recommendation(
     dte: int,
     profit_pct: float,
@@ -858,20 +869,8 @@ def main():
         # Prefer ticker from trade label (e.g. "AMZN 3/3" -> AMZN) when payload has wrong/missing ticker
         label = (st.session_state.pop("loaded_trade_label", "") or "").strip()
         ticker_from_data = (data.get("ticker") or "").strip().upper()
-        if label:
-            # First try first word; else use first word that looks like a ticker (1-5 letters)
-            parts = label.split()
-            first_word = parts[0] if parts else ""
-            if first_word and len(first_word) <= 5 and first_word.isalpha():
-                st.session_state["ticker"] = first_word.upper()
-            else:
-                ticker_from_label = next(
-                    (p.upper() for p in parts if len(p) <= 5 and p.isalpha()),
-                    None,
-                )
-                st.session_state["ticker"] = ticker_from_label or ticker_from_data or "SPY"
-        else:
-            st.session_state["ticker"] = ticker_from_data or "SPY"
+        ticker_from_label = _ticker_from_trade_label(label)
+        st.session_state["ticker"] = (ticker_from_label or ticker_from_data or "SPY")
         st.session_state["short_put_strike"] = data["short_put_strike"]
         st.session_state["long_put_strike"] = data["long_put_strike"]
         exp_val = data["expiration_date"]
@@ -891,6 +890,13 @@ def main():
 
     if "ticker" not in st.session_state:
         st.session_state["ticker"] = "SPY"
+
+    # If a saved trade is selected, keep ticker in sync with its label (before sidebar runs) so fetch uses correct symbol
+    _selected = st.session_state.get("trade_to_load") or ""
+    if _selected and _selected != "(none)":
+        _parsed = _ticker_from_trade_label(_selected)
+        if _parsed:
+            st.session_state["ticker"] = _parsed
 
     def _normalize_ticker_input() -> None:
         raw = st.session_state.get("ticker") or ""
@@ -1348,6 +1354,12 @@ def main():
             index=default_load_index,
             key="trade_to_load",
         )
+
+        # Keep ticker in sync with selected trade label so it can't revert to SPY (e.g. after refresh or sidebar run order)
+        if trade_to_load and trade_to_load != "(none)":
+            parsed = _ticker_from_trade_label(trade_to_load)
+            if parsed and st.session_state.get("ticker") != parsed:
+                st.session_state["ticker"] = parsed
 
         if (
             saved_trades
