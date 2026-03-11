@@ -127,6 +127,49 @@ def get_recommendation(
     return recommendation, color, reasons
 
 
+def explain_recommendation_for_novice(recommendation: str, reasons: List[str]) -> List[str]:
+    """Turn rule-of-thumb reasons into plain-language explanations for novice options traders."""
+    intro = ""
+    if "Close Now" in recommendation and "or Roll" not in recommendation:
+        intro = "Why close now? You’ve hit one or more conditions that many experienced traders use as a signal to take the trade off and lock in the result."
+    elif "Close Now or Roll" in recommendation:
+        intro = "Why consider closing or rolling? This trade is in a risk zone: closing can cut the loss, and rolling can give you more time and a better strike or expiration."
+    elif "Hold" in recommendation:
+        intro = "Why hold? None of our close/roll rules are firing yet, so you can afford to keep the trade on—as long as you keep an eye on it."
+    else:
+        intro = "What this means: The suggestion above is based on common rules of thumb for managing bull put spreads."
+
+    explanations: List[str] = []
+    for r in reasons:
+        r_lower = r.lower()
+        if "high profit" in r_lower and "80%" in r:
+            explanations.append("**You’ve captured most of the profit (80%+).** Closing now locks in gains before the market can change. Many traders don’t wait for 100%.")
+        elif "solid profit" in r_lower and "50%" in r and "dte" in r_lower:
+            explanations.append("**Good profit (50%+) with 21 days or less to go.** The remaining upside is often small compared to the risk of a quick move. Closing here is a common choice.")
+        elif "very low dte" in r_lower or "dte < 7" in r_lower or "elevated gamma" in r_lower:
+            explanations.append("**Very little time left (under 7 days).** Near expiration, small stock moves can cause big swings in your spread (gamma risk). Closing or rolling is often safer than holding to expiry.")
+        elif "net delta" in r_lower and "0.50" in r:
+            explanations.append("**Your spread is acting very directional (high delta).** That means it’s more like a big bet on the stock. If the stock moves against you, the loss can grow quickly, so closing or reducing size is often wise.")
+        elif "theta" in r_lower and "very low" in r_lower:
+            explanations.append("**You’re barely earning any time decay.** There’s little extra benefit to holding, so closing is often the simpler move.")
+        elif "volatility has increased" in r_lower or "iv has" in r_lower or "implied volatility" in r_lower:
+            explanations.append("**Volatility (IV) has gone up.** Higher IV usually means more risk and bigger swings. Closing can help you avoid giving back gains or taking a larger loss.")
+        elif "losing money" in r_lower and "short strike" in r_lower:
+            explanations.append("**You’re in a loss and the stock is near your short strike.** That increases the chance of assignment or deeper losses. Closing or rolling is worth serious consideration.")
+        elif "expiration date is in the past" in r_lower:
+            explanations.append("**The expiration date has already passed.** Double-check your trade details; you may need to update the date or treat the position as closed.")
+        elif "no strong risk signals" in r_lower or "no strong close" in r_lower:
+            explanations.append("**No rule is telling you to close yet.** You still have time value, so holding a few more days can be reasonable—just keep monitoring price and volatility.")
+        elif "monitor" in r_lower and "no explicit close" in r_lower:
+            explanations.append("**No clear close signal yet.** Conditions can change quickly. Keep an eye on the stock, volatility, and the key numbers above, and be ready to close or roll if things worsen.")
+        elif r.strip().startswith("DTE:") or "dte:" in r_lower:
+            explanations.append(f"**Quick snapshot:** {r.strip()}")
+        else:
+            explanations.append(r)
+
+    return [intro] + explanations
+
+
 def render_recommendation_box(recommendation: str, color: str, reasons: List[str]):
     box_style = f"""
     <div style="
@@ -1327,55 +1370,17 @@ def main():
     st.subheader("Exit Recommendation")
     render_recommendation_box(recommendation, rec_color, rec_reasons)
 
-    # --- Detailed Summary & Reasoning ---
-    col_left, col_right = st.columns([1.2, 1])
-
-    with col_left:
-        st.markdown("### Position Snapshot")
-        spread_width = max(short_put_strike - long_put_strike, 0.0)
-        max_profit = entry_credit
-        max_loss = max(spread_width - entry_credit, 0.0)
-
-        st.write(
-            f"**{ticker} Bull Put Spread:** Short {short_put_strike:.2f} / Long {long_put_strike:.2f}, "
-            f"expires {expiration_date.isoformat()}."
-        )
-        st.write(
-            f"- **Current price**: ${current_price:,.2f}  "
-            f"- **Entry credit**: ${entry_credit:,.2f}  "
-            f"- **Current debit to close**: ${current_debit_to_close:,.2f}"
-        )
-        st.write(
-            f"- **Spread width**: ${spread_width:,.2f}  "
-            f"- **Max profit**: ${max_profit:,.2f}  "
-            f"- **Max loss (approx.)**: ${max_loss:,.2f}"
-        )
-        st.write(
-            f"- **Net greeks**: Δ {net_delta:.2f}, Θ {net_theta:.2f}, Vega {net_vega:.2f}  "
-            f"- **IV now (live) / IV at entry**: {current_iv:.2f}% / {iv_at_entry:.2f}%"
-        )
-        if price_near_short:
-            st.write(
-                "📍 **Price is near the short strike** – assignment and gamma risk are more sensitive here."
-            )
-        else:
-            st.write(
-                "📍 **Price is away from the short strike** – more safety margin from the short leg."
-            )
-
-        if notes.strip():
-            st.markdown("#### Trader Notes / Context")
-            st.info(notes)
-
-    with col_right:
-        st.markdown("### Step-by-Step Reasoning")
-        # Render reasoning as a bullet list in a nice box
-        reasoning_md = "<div style='border-radius: 8px; padding: 0.75rem 1rem; background-color: #f9fafb; border: 1px solid #e5e7eb;'>"
-        reasoning_md += "<ul style='margin: 0 0 0 1.2rem; padding-left: 0;'>"
-        for r in rec_reasons:
-            reasoning_md += f"<li style='margin-bottom: 0.35rem; color: #111827;'>{r}</li>"
-        reasoning_md += "</ul></div>"
-        st.markdown(reasoning_md, unsafe_allow_html=True)
+    # --- Step-by-Step Reasoning (novice-friendly, based on rule-of-thumb logic) ---
+    st.markdown("### Step-by-Step Reasoning")
+    novice_explanations = explain_recommendation_for_novice(recommendation, rec_reasons)
+    reasoning_md = "<div style='border-radius: 8px; padding: 1rem 1.25rem; background-color: #f9fafb; border: 1px solid #e5e7eb;'>"
+    reasoning_md += "<p style='margin: 0 0 0.75rem 0; color: #111827;'>" + novice_explanations[0] + "</p>"
+    reasoning_md += "<ul style='margin: 0 0 0 1.2rem; padding-left: 0;'>"
+    for ex in novice_explanations[1:]:
+        clean = ex.replace("**", "")  # strip markdown bold for HTML display
+        reasoning_md += f"<li style='margin-bottom: 0.5rem; color: #374151; line-height: 1.5;'>{clean}</li>"
+    reasoning_md += "</ul></div>"
+    st.markdown(reasoning_md, unsafe_allow_html=True)
 
     # --- Footer / Disclaimer ---
     st.markdown("---")
