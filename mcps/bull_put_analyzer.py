@@ -1128,10 +1128,15 @@ def main():
 
         st.markdown("**Saved Trades**")
         current_loaded = st.session_state.get("trade_to_load", "(none)")
-        # Compute profit % and recommendation color for each trade; use live session data for the loaded trade so it matches the right side
+        stored_rec_color = st.session_state.get("_rec_color_for_loaded") if st.session_state.get("_rec_color_trade") == current_loaded else None
+        stored_profit_pct = st.session_state.get("_profit_pct_for_loaded") if st.session_state.get("_profit_pct_trade") == current_loaded else None
+        # Compute profit % and recommendation color for each trade; use stored main-area values for loaded trade so button matches right side
         trade_colors: List[str] = []
         for lbl in saved_trades.keys():
             p = saved_trades[lbl]
+            if lbl == current_loaded and stored_rec_color is not None:
+                trade_colors.append(stored_rec_color)
+                continue
             if lbl == current_loaded:
                 entry_c = float(st.session_state.get("entry_credit") or 0)
                 debit = float(st.session_state.get("current_debit_to_close") or 0)
@@ -1142,7 +1147,7 @@ def main():
                 _, profit_pct = compute_profit_metrics(entry_c, debit)
             else:
                 profit_pct = 0.0
-            # Recommendation color for button background (use live data for loaded trade)
+            # Recommendation color for button background
             try:
                 if lbl == current_loaded:
                     exp_date = st.session_state.get("expiration_date") or (datetime.date.today() + datetime.timedelta(days=30))
@@ -1180,34 +1185,35 @@ def main():
                 trade_colors.append("#6b7280")  # neutral gray
 
         N = len(trade_colors)
-        # Color only the first N buttons (trade buttons); reset Delete and Disconnect to neutral so they don't get recommendation colors
+        # Color only the first N buttons (trade buttons); do not style Delete or Disconnect so they keep Streamlit default
         if N > 0:
             css_trade = "".join(
                 f'[data-testid="stSidebar"] [data-testid="stButton"]:nth-of-type({i+1}) button {{ background-color: {c} !important; color: white !important; border: none !important; }} '
                 for i, c in enumerate(trade_colors)
             )
-            css_reset = (
-                f'[data-testid="stSidebar"] [data-testid="stButton"]:nth-of-type({N+1}) button, '
-                f'[data-testid="stSidebar"] [data-testid="stButton"]:nth-of-type({N+2}) button '
-                f'{{ background-color: #374151 !important; color: white !important; border: none !important; }} '
-            )
             st.markdown(
-                f'<style>{css_trade}{css_reset}</style>',
+                f'<style>{css_trade}</style>',
                 unsafe_allow_html=True,
             )
 
         for i, lbl in enumerate(saved_trades.keys()):
             p = saved_trades[lbl]
-            if lbl == current_loaded:
+            if lbl == current_loaded and stored_profit_pct is not None:
+                profit_pct = stored_profit_pct
+            elif lbl == current_loaded:
                 entry_c = float(st.session_state.get("entry_credit") or 0)
                 debit = float(st.session_state.get("current_debit_to_close") or 0)
+                if entry_c and entry_c > 0:
+                    _, profit_pct = compute_profit_metrics(entry_c, debit)
+                else:
+                    profit_pct = 0.0
             else:
                 entry_c = float(p.get("entry_credit") or 0)
                 debit = float(p.get("current_debit_to_close") or 0)
-            if entry_c and entry_c > 0:
-                _, profit_pct = compute_profit_metrics(entry_c, debit)
-            else:
-                profit_pct = 0.0
+                if entry_c and entry_c > 0:
+                    _, profit_pct = compute_profit_metrics(entry_c, debit)
+                else:
+                    profit_pct = 0.0
             is_up = profit_pct >= 0
             profit_str = f" ↑ {profit_pct:,.1f}%" if is_up else f" ↓ {profit_pct:,.1f}%"
             profit_color = "#16a34a" if is_up else "#dc2626"
@@ -1708,6 +1714,13 @@ def main():
         price_near_short=price_near_short,
         target_profit_pct=st.session_state.get("target_profit_pct"),
     )
+    # Store so sidebar can show same color and profit % for the loaded trade's button (sidebar runs first, so uses previous run's values)
+    _loaded = st.session_state.get("trade_to_load", "(none)")
+    if _loaded != "(none)":
+        st.session_state["_rec_color_for_loaded"] = rec_color
+        st.session_state["_rec_color_trade"] = _loaded
+        st.session_state["_profit_pct_for_loaded"] = profit_pct
+        st.session_state["_profit_pct_trade"] = _loaded
 
     st.subheader("Exit Recommendation")
     render_recommendation_box(recommendation, rec_color, rec_reasons)
