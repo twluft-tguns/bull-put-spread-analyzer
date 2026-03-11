@@ -889,6 +889,8 @@ def main():
         data = st.session_state.pop("loaded_trade_data")
         # Prefer ticker from trade label (e.g. "AMZN 3/3" -> AMZN) when payload has wrong/missing ticker
         label = (st.session_state.pop("loaded_trade_label", "") or "").strip()
+        st.session_state["trade_label"] = label
+        st.session_state["last_trade_label_value"] = label
         ticker_from_data = (data.get("ticker") or "").strip().upper()
         ticker_from_label = _ticker_from_trade_label(label)
         st.session_state["ticker"] = (ticker_from_label or ticker_from_data or "SPY")
@@ -1379,12 +1381,12 @@ def main():
             for lbl in saved_trades.keys():
                 default_on = saved_trades[lbl].get("telegram_alerts_enabled", True)
                 st.checkbox(
-                    f"Alert for \"{lbl}\"",
+                    "Alert",
                     value=default_on,
                     key="tg_" + lbl,
                     on_change=_persist_telegram_pref,
                     args=(workspace_key, lbl),
-                    help="Send Telegram when recommendation changes to Close Now or Close Now or Roll for this trade.",
+                    help=f'Send Telegram when recommendation changes to Close Now or Close Now or Roll for "{lbl}".',
                 )
 
     with manual_entry_col:
