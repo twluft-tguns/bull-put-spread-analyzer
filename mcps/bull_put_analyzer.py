@@ -1126,7 +1126,7 @@ def main():
             st.session_state["last_auto_load_workspace"] = workspace_key
             st.rerun()
 
-        st.markdown("**Load Trade**")
+        st.markdown("**Saved Trades**")
         load_options_sb = ["(none)"] + list(saved_trades.keys()) if saved_trades else ["(none)"]
         if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options_sb:
             default_load_index_sb = load_options_sb.index(st.session_state["trade_to_load"])
