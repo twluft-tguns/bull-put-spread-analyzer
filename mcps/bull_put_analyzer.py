@@ -893,35 +893,39 @@ def main():
     # be from the wrong ticker (e.g. SPY). We refetch live data for the loaded trade's ticker.
     if "loaded_trade_data" in st.session_state:
         data = st.session_state.pop("loaded_trade_data")
-        # Prefer ticker from trade label (e.g. "AMZN 3/3" -> AMZN) when payload has wrong/missing ticker
-        label = (st.session_state.pop("loaded_trade_label", "") or "").strip()
-        st.session_state["trade_label"] = label
-        st.session_state["last_trade_label_value"] = label
-        ticker_from_data = (data.get("ticker") or "").strip().upper()
-        ticker_from_label = _ticker_from_trade_label(label)
-        st.session_state["ticker"] = (ticker_from_label or ticker_from_data or "SPY")
-        st.session_state["short_put_strike"] = data["short_put_strike"]
-        st.session_state["long_put_strike"] = data["long_put_strike"]
-        exp_val = data["expiration_date"]
-        if isinstance(exp_val, str):
-            st.session_state["expiration_date"] = datetime.date.fromisoformat(exp_val)
+        if not isinstance(data, dict):
+            # Cleared after delete or invalid state; skip apply
+            st.session_state.pop("loaded_trade_label", None)
         else:
-            st.session_state["expiration_date"] = exp_val
-        st.session_state["entry_credit"] = float(data.get("entry_credit") or 0.0)
-        # Live data: clear so sidebar refetches for this ticker (avoids showing SPY data for AMZN, etc.)
-        for key in ("current_price", "current_debit_to_close", "net_delta", "net_theta", "net_vega", "current_iv"):
-            st.session_state.pop(key, None)
-        st.session_state.pop("last_live_fetch_time", None)
-        # Only restore iv_at_entry from payload when we didn't correct the ticker (payload may be from wrong ticker)
-        if ticker_from_label and ticker_from_label != ticker_from_data:
-            # Payload was saved with wrong ticker; iv_at_entry in payload is for the wrong symbol
-            st.session_state["iv_at_entry"] = 0.0
-            st.session_state["iv_at_entry_baseline"] = 0.0
-        else:
-            st.session_state["iv_at_entry"] = float(data.get("iv_at_entry") or 0.0)
-            st.session_state["iv_at_entry_baseline"] = float(data.get("iv_at_entry") or 0.0)
-        _loaded_dte = compute_dte(st.session_state["expiration_date"])
-        st.session_state["target_profit_pct"] = float(data.get("target_profit_pct") or default_target_profit_pct(_loaded_dte))
+            # Prefer ticker from trade label (e.g. "AMZN 195/190 2026/6/18" -> AMZN) when payload has wrong/missing ticker
+            label = (st.session_state.pop("loaded_trade_label", "") or "").strip()
+            st.session_state["trade_label"] = label
+            st.session_state["last_trade_label_value"] = label
+            ticker_from_data = str(data.get("ticker") or "").strip().upper()
+            ticker_from_label = _ticker_from_trade_label(label)
+            st.session_state["ticker"] = (ticker_from_label or ticker_from_data or "SPY")
+            st.session_state["short_put_strike"] = data["short_put_strike"]
+            st.session_state["long_put_strike"] = data["long_put_strike"]
+            exp_val = data["expiration_date"]
+            if isinstance(exp_val, str):
+                st.session_state["expiration_date"] = datetime.date.fromisoformat(exp_val)
+            else:
+                st.session_state["expiration_date"] = exp_val
+            st.session_state["entry_credit"] = float(data.get("entry_credit") or 0.0)
+            # Live data: clear so sidebar refetches for this ticker (avoids showing SPY data for AMZN, etc.)
+            for key in ("current_price", "current_debit_to_close", "net_delta", "net_theta", "net_vega", "current_iv"):
+                st.session_state.pop(key, None)
+            st.session_state.pop("last_live_fetch_time", None)
+            # Only restore iv_at_entry from payload when we didn't correct the ticker (payload may be from wrong ticker)
+            if ticker_from_label and ticker_from_label != ticker_from_data:
+                # Payload was saved with wrong ticker; iv_at_entry in payload is for the wrong symbol
+                st.session_state["iv_at_entry"] = 0.0
+                st.session_state["iv_at_entry_baseline"] = 0.0
+            else:
+                st.session_state["iv_at_entry"] = float(data.get("iv_at_entry") or 0.0)
+                st.session_state["iv_at_entry_baseline"] = float(data.get("iv_at_entry") or 0.0)
+            _loaded_dte = compute_dte(st.session_state["expiration_date"])
+            st.session_state["target_profit_pct"] = float(data.get("target_profit_pct") or default_target_profit_pct(_loaded_dte))
 
     if "ticker" not in st.session_state:
         st.session_state["ticker"] = "SPY"
@@ -1175,8 +1179,8 @@ def main():
                     delete_trade(workspace_key, trade_to_load_sb)
                     st.success(f"Deleted '{trade_to_load_sb}'")
                     st.session_state["trade_to_load"] = "(none)"
-                    st.session_state["loaded_trade_data"] = None
-                    st.session_state["loaded_trade_label"] = None
+                    st.session_state.pop("loaded_trade_data", None)
+                    st.session_state.pop("loaded_trade_label", None)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Delete failed: {e}")
