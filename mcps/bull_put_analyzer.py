@@ -1127,6 +1127,30 @@ def main():
             st.rerun()
 
         st.markdown("**Saved Trades**")
+        # Bold outline for selected trade button (CSS targets key-based class)
+        _trade_list = list(saved_trades.keys())
+        _selected = st.session_state.get("trade_to_load", "(none)")
+        _selected_idx = _trade_list.index(_selected) if _selected in saved_trades else -1
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebar"] .stButton button[class*="load_trade_btn"] { border: 1px solid rgba(250,250,250,0.25); }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        if _selected_idx >= 0:
+            st.markdown(
+                f"""
+                <style>
+                [data-testid="stSidebar"] .stButton button.st-key-load_trade_btn_{_selected_idx} {{
+                    border: 2px solid #1f77b4 !important;
+                    box-shadow: 0 0 0 1px #1f77b4;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
         # One button per saved trade: click loads that trade into the form
         for i, trade_label in enumerate(saved_trades):
             if st.button(trade_label, key=f"load_trade_btn_{i}", use_container_width=True):
