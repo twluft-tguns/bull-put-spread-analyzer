@@ -1137,33 +1137,30 @@ def main():
             st.rerun()
 
         st.markdown("**Saved Trades**")
-        # Bold outline for selected trade button (CSS targets key-based class)
+        # Bold outline for selected trade button: inject marker div before selected button, then CSS targets next sibling
         _trade_list = list(saved_trades.keys())
         _selected = st.session_state.get("trade_to_load", "(none)")
         _selected_idx = _trade_list.index(_selected) if _selected in saved_trades else -1
         st.markdown(
             """
             <style>
-            [data-testid="stSidebar"] .stButton button[class*="load_trade_btn"] { border: 1px solid rgba(250,250,250,0.25); }
+            [data-testid="stSidebar"] .stButton button { border: 1px solid rgba(250,250,250,0.2); }
+            [data-testid="stSidebar"] .selected-trade-marker + div[data-testid="stVerticalBlock"] .stButton button,
+            [data-testid="stSidebar"] .selected-trade-marker + div.stButton button,
+            [data-testid="stSidebar"] :has(.selected-trade-marker) + * .stButton button {
+                border: 2px solid #1f77b4 !important;
+                box-shadow: 0 0 0 1px #1f77b4;
+            }
             </style>
             """,
             unsafe_allow_html=True,
         )
-        if _selected_idx >= 0:
-            st.markdown(
-                f"""
-                <style>
-                [data-testid="stSidebar"] .stButton button.st-key-load_trade_btn_{_selected_idx} {{
-                    border: 2px solid #1f77b4 !important;
-                    box-shadow: 0 0 0 1px #1f77b4;
-                }}
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
         # One button per saved trade: click loads that trade into the form
         for i, trade_label in enumerate(saved_trades):
-            if st.button(trade_label, key=f"load_trade_btn_{i}", use_container_width=True):
+            if _selected_idx == i:
+                st.markdown('<div class="selected-trade-marker" style="display:none;"></div>', unsafe_allow_html=True)
+            btn_label = f"► {trade_label}" if _selected_idx == i else trade_label
+            if st.button(btn_label, key=f"load_trade_btn_{i}", use_container_width=True):
                 st.session_state["trade_to_load"] = trade_label
                 st.session_state["loaded_trade_data"] = saved_trades[trade_label]
                 st.session_state["loaded_trade_label"] = trade_label
