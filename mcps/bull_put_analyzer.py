@@ -77,6 +77,12 @@ def _ticker_from_trade_label(label: str) -> str | None:
     return next((p.upper() for p in parts if len(p) <= 5 and p.isalpha()), None)
 
 
+def _trade_label_from_entry(ticker: str, short_put_strike: float, long_put_strike: float, expiration_date) -> str:
+    """Generate trade name from manual entry: 'TICKER Short/Long YYYY/M/D' e.g. AMZN 195/190 2026/6/18."""
+    t = (ticker or "SPY").strip().upper()
+    return f"{t} {short_put_strike:.0f}/{long_put_strike:.0f} {expiration_date.year}/{expiration_date.month}/{expiration_date.day}"
+
+
 def get_recommendation(
     dte: int,
     profit_pct: float,
@@ -1174,6 +1180,25 @@ def main():
                     st.rerun()
                 except Exception as e:
                     st.error(f"Delete failed: {e}")
+            # Telegram alerts for selected trade
+            lbl = st.session_state["trade_to_load"]
+            if lbl in saved_trades:
+                def _persist_telegram_pref(workspace_key: str, trade_label: str) -> None:
+                    key = "tg_" + trade_label
+                    new_val = st.session_state.get(key, True)
+                    trades = list_trades(workspace_key)
+                    payload = dict(trades.get(trade_label, {}))
+                    payload["telegram_alerts_enabled"] = bool(new_val)
+                    upsert_trade(workspace_key, trade_label, payload)
+                default_on = saved_trades[lbl].get("telegram_alerts_enabled", True)
+                st.checkbox(
+                    "Telegram alerts",
+                    value=default_on,
+                    key="tg_" + lbl,
+                    on_change=_persist_telegram_pref,
+                    args=(workspace_key, lbl),
+                    help=f'Send Telegram when recommendation changes for "{lbl}".',
+                )
 
         st.markdown("---")
 
@@ -1255,7 +1280,7 @@ def main():
                                 trade_to_load = st.session_state.get("trade_to_load") or ""
                                 payload = saved_trades.get(trade_to_load, {}) if trade_to_load and trade_to_load != "(none)" else {}
                                 if payload.get("telegram_alerts_enabled", True):
-                                    trade_name = st.session_state.get("trade_label", "").strip() or f"{ticker_s} {short_s}/{long_s}"
+                                    trade_name = (trade_to_load if trade_to_load and trade_to_load != "(none)" else None) or st.session_state.get("trade_label", "").strip() or f"{ticker_s} {short_s}/{long_s}"
                                     send_telegram_message(
                                         f"Bull Put Spread Alert – {rec}\n"
                                         f"Trade: {trade_name}\n"
@@ -1370,47 +1395,18 @@ def main():
     )
     st.caption("Quickly evaluate whether to close, hold, or roll your bull put spread based on profit, DTE, greeks, and volatility.")
 
-    # Top panel below title: Saved Trades (left) and Manual Entry (right)
-    saved_trades_col, manual_entry_col = st.columns([1.0, 1.25], gap="large")
-
-    with saved_trades_col:
-        st.markdown("#### Saved Trades")
-        trade_label_value = st.text_input("Trade Name / Label", key="trade_label")
-        previous_trade_label = st.session_state.get("last_trade_label_value", "")
-        if trade_label_value != previous_trade_label:
-            st.session_state["last_trade_label_value"] = trade_label_value
-            if trade_label_value.strip() and st.session_state.get("trade_to_load", "(none)") != "(none)":
-                st.session_state["trade_to_load"] = "(none)"
-                st.rerun()
-
-        def _persist_telegram_pref(workspace_key: str, trade_label: str) -> None:
-            key = "tg_" + trade_label
-            new_val = st.session_state.get(key, True)
-            trades = list_trades(workspace_key)
-            payload = dict(trades.get(trade_label, {}))
-            payload["telegram_alerts_enabled"] = bool(new_val)
-            upsert_trade(workspace_key, trade_label, payload)
-
-        current_loaded = st.session_state.get("trade_to_load", "(none)")
-        if saved_trades and current_loaded != "(none)" and current_loaded in saved_trades:
-            st.caption("Telegram alerts")
-            lbl = current_loaded
-            default_on = saved_trades[lbl].get("telegram_alerts_enabled", True)
-            st.checkbox(
-                "Alert",
-                value=default_on,
-                key="tg_" + lbl,
-                on_change=_persist_telegram_pref,
-                args=(workspace_key, lbl),
-                help=f'Send Telegram when recommendation changes to Close Now or Close Now or Roll for "{lbl}".',
-            )
+    # Top panel below title: Manual Entry only (Saved Trades are in sidebar)
+    manual_entry_col = st.columns([1])[0]
 
     with manual_entry_col:
         st.markdown("#### 📝 Manual Entry")
         st.caption("Enter when you open the trade (incl. short put strike IV at entry and target profit %). Not updated by live fetch.")
-        current_trade_to_load = st.session_state.get("trade_to_load", "(none)")
-        current_trade_label = (st.session_state.get("trade_label") or "").strip()
-        save_target = current_trade_to_load if current_trade_to_load != "(none)" else (current_trade_label or None)
+        save_target = _trade_label_from_entry(
+            st.session_state.get("ticker", "SPY"),
+            st.session_state.get("short_put_strike", 430.0),
+            st.session_state.get("long_put_strike", 420.0),
+            st.session_state.get("expiration_date", datetime.date.today() + datetime.timedelta(days=30)),
+        )
 
         manual_left_col, manual_right_col = st.columns(2, gap="large")
         with manual_left_col:
@@ -1482,33 +1478,33 @@ def main():
             save_trade_clicked = st.button("💾 Save Trade", type="primary", use_container_width=True, key="save_trade_manual")
 
         if save_trade_clicked:
-            if save_target:
-                existing = dict(saved_trades.get(save_target, {})) if save_target in saved_trades else {}
-                payload = {
-                    **existing,
-                    "ticker": ticker,
-                    "short_put_strike": short_put_strike,
-                    "long_put_strike": long_put_strike,
-                    "expiration_date": str(expiration_date),
-                    "entry_credit": entry_credit,
-                    "iv_at_entry": iv_at_entry,
-                    "target_profit_pct": st.session_state.get("target_profit_pct", default_target_profit_pct(compute_dte(expiration_date))),
-                    "telegram_alerts_enabled": st.session_state.get("tg_" + save_target, existing.get("telegram_alerts_enabled", True)),
-                }
-                if save_target not in saved_trades:
-                    payload["current_price"] = st.session_state.get("current_price", 440.0)
-                    payload["current_debit_to_close"] = st.session_state.get("current_debit_to_close", 0.40)
-                    payload["net_delta"] = st.session_state.get("net_delta", 0.20)
-                    payload["net_vega"] = st.session_state.get("net_vega", -0.40)
-                    payload["current_iv"] = st.session_state.get("current_iv", 22.0)
-                try:
-                    upsert_trade(workspace_key, save_target, payload)
-                    st.success(f"Saved manual entry to '{save_target}' (Short put strike IV at entry {iv_at_entry}%)")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Save failed: {e}")
-            else:
-                st.warning("Select a trade in the dropdown to save to, or enter a new trade name.")
+            existing = dict(saved_trades.get(save_target, {})) if save_target in saved_trades else {}
+            payload = {
+                **existing,
+                "ticker": ticker,
+                "short_put_strike": short_put_strike,
+                "long_put_strike": long_put_strike,
+                "expiration_date": str(expiration_date),
+                "entry_credit": entry_credit,
+                "iv_at_entry": iv_at_entry,
+                "target_profit_pct": st.session_state.get("target_profit_pct", default_target_profit_pct(compute_dte(expiration_date))),
+                "telegram_alerts_enabled": st.session_state.get("tg_" + save_target, existing.get("telegram_alerts_enabled", True)),
+            }
+            if save_target not in saved_trades:
+                payload["current_price"] = st.session_state.get("current_price", 440.0)
+                payload["current_debit_to_close"] = st.session_state.get("current_debit_to_close", 0.40)
+                payload["net_delta"] = st.session_state.get("net_delta", 0.20)
+                payload["net_vega"] = st.session_state.get("net_vega", -0.40)
+                payload["current_iv"] = st.session_state.get("current_iv", 22.0)
+            try:
+                upsert_trade(workspace_key, save_target, payload)
+                st.session_state["trade_to_load"] = save_target
+                st.session_state["loaded_trade_label"] = save_target
+                st.session_state["trade_label"] = save_target
+                st.success(f"Saved as '{save_target}' (Short put strike IV at entry {iv_at_entry}%)")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Save failed: {e}")
 
     # Divider line above fetched/calculated metrics
     st.markdown(
