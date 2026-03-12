@@ -1127,44 +1127,26 @@ def main():
             st.rerun()
 
         st.markdown("**Saved Trades**")
-        load_options_sb = ["(none)"] + list(saved_trades.keys()) if saved_trades else ["(none)"]
-        if "trade_to_load" in st.session_state and st.session_state["trade_to_load"] in load_options_sb:
-            default_load_index_sb = load_options_sb.index(st.session_state["trade_to_load"])
-        elif saved_trades:
-            default_load_index_sb = 1
-        else:
-            default_load_index_sb = 0
-        trade_to_load_sb = st.selectbox(
-            "Select a saved trade to load",
-            options=load_options_sb,
-            index=default_load_index_sb,
-            key="trade_to_load",
-            label_visibility="collapsed",
-        )
-        if trade_to_load_sb and trade_to_load_sb != "(none)":
-            _parsed = _ticker_from_trade_label(trade_to_load_sb)
-            if _parsed and st.session_state.get("ticker") != _parsed:
-                st.session_state["ticker"] = _parsed
-        if (
-            saved_trades
-            and trade_to_load_sb != "(none)"
-            and trade_to_load_sb == load_options_sb[1]
-            and st.session_state.get("last_auto_load_workspace") != workspace_key
-        ):
-            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load_sb]
-            st.session_state["loaded_trade_label"] = trade_to_load_sb
-            st.session_state["last_auto_load_workspace"] = workspace_key
-            st.rerun()
-        if trade_to_load_sb != "(none)" and st.button("📥 Apply Loaded Trade", key="apply_loaded_trade_sidebar", use_container_width=True):
-            st.session_state["loaded_trade_data"] = saved_trades[trade_to_load_sb]
-            st.session_state["loaded_trade_label"] = trade_to_load_sb
-            st.rerun()
-        if st.button("🗑️ Delete selected trade", key="delete_trade_sidebar", use_container_width=True):
-            if trade_to_load_sb != "(none)":
+        # One button per saved trade: click loads that trade into the form
+        for i, trade_label in enumerate(saved_trades):
+            if st.button(trade_label, key=f"load_trade_btn_{i}", use_container_width=True):
+                st.session_state["trade_to_load"] = trade_label
+                st.session_state["loaded_trade_data"] = saved_trades[trade_label]
+                st.session_state["loaded_trade_label"] = trade_label
+                _parsed = _ticker_from_trade_label(trade_label)
+                if _parsed:
+                    st.session_state["ticker"] = _parsed
+                st.rerun()
+        # Delete only when a trade is selected
+        if st.session_state.get("trade_to_load", "(none)") != "(none)":
+            if st.button("🗑️ Delete selected trade", key="delete_trade_sidebar", use_container_width=True):
+                trade_to_load_sb = st.session_state["trade_to_load"]
                 try:
                     delete_trade(workspace_key, trade_to_load_sb)
                     st.success(f"Deleted '{trade_to_load_sb}'")
                     st.session_state["trade_to_load"] = "(none)"
+                    st.session_state["loaded_trade_data"] = None
+                    st.session_state["loaded_trade_label"] = None
                     st.rerun()
                 except Exception as e:
                     st.error(f"Delete failed: {e}")
