@@ -929,13 +929,33 @@ def main():
 
     if "ticker" not in st.session_state:
         st.session_state["ticker"] = "SPY"
+    # Initialize widget keys so we can use key= without value= (Streamlit forbids both default value and session state for same key)
+    _default_exp = datetime.date.today() + datetime.timedelta(days=30)
+    if "short_put_strike" not in st.session_state:
+        st.session_state["short_put_strike"] = 430.0
+    if "long_put_strike" not in st.session_state:
+        st.session_state["long_put_strike"] = 420.0
+    if "expiration_date" not in st.session_state:
+        st.session_state["expiration_date"] = _default_exp
+    if "entry_credit" not in st.session_state:
+        st.session_state["entry_credit"] = 2.00
+    if "iv_at_entry" not in st.session_state:
+        st.session_state["iv_at_entry"] = 25.0
+    if "target_profit_pct" not in st.session_state:
+        st.session_state["target_profit_pct"] = default_target_profit_pct(compute_dte(st.session_state["expiration_date"]))
 
-    # If a saved trade is selected, keep ticker in sync with its label (before sidebar runs) so fetch uses correct symbol
+    # Only sync ticker from the selected trade when the selection has just changed (user picked a different trade).
+    # Otherwise we would overwrite the ticker on every rerun (e.g. when user types a new ticker and presses Enter).
     _selected = st.session_state.get("trade_to_load") or ""
+    _last_synced = st.session_state.get("last_trade_to_load_synced")
     if _selected and _selected != "(none)":
-        _parsed = _ticker_from_trade_label(_selected)
-        if _parsed:
-            st.session_state["ticker"] = _parsed
+        if _selected != _last_synced:
+            _parsed = _ticker_from_trade_label(_selected)
+            if _parsed:
+                st.session_state["ticker"] = _parsed
+            st.session_state["last_trade_to_load_synced"] = _selected
+    else:
+        st.session_state["last_trade_to_load_synced"] = "(none)"
 
     def _normalize_ticker_input() -> None:
         raw = st.session_state.get("ticker") or ""
@@ -1419,7 +1439,6 @@ def main():
                 short_put_strike = st.number_input(
                     "Short Put Strike",
                     min_value=0.0,
-                    value=st.session_state.get("short_put_strike", 430.0),
                     step=1.0,
                     key="short_put_strike",
                 )
@@ -1427,15 +1446,12 @@ def main():
                 long_put_strike = st.number_input(
                     "Long Put Strike",
                     min_value=0.0,
-                    value=st.session_state.get("long_put_strike", 420.0),
                     step=1.0,
                     key="long_put_strike",
                 )
 
-            default_expiration = datetime.date.today() + datetime.timedelta(days=30)
             expiration_date = st.date_input(
                 "Expiration Date",
-                value=st.session_state.get("expiration_date", default_expiration),
                 key="expiration_date",
             )
 
@@ -1443,7 +1459,6 @@ def main():
             entry_credit = st.number_input(
                 "Entry Credit Received (per spread)",
                 min_value=0.0,
-                value=st.session_state.get("entry_credit", 2.00),
                 step=0.05,
                 format="%.2f",
                 key="entry_credit",
@@ -1453,7 +1468,6 @@ def main():
                 "Short put strike IV at entry (%)",
                 min_value=0.0,
                 max_value=200.0,
-                value=st.session_state.get("iv_at_entry", 25.0),
                 step=0.5,
                 format="%.2f",
                 key="iv_at_entry",
@@ -1461,13 +1475,10 @@ def main():
             )
             st.session_state["iv_at_entry_baseline"] = iv_at_entry
 
-            _dte_for_default = compute_dte(expiration_date)
-            _default_target = default_target_profit_pct(_dte_for_default)
             target_profit_pct = st.number_input(
                 "Target profit (%)",
                 min_value=0.0,
                 max_value=200.0,
-                value=st.session_state.get("target_profit_pct", _default_target),
                 step=1.0,
                 format="%.0f",
                 key="target_profit_pct",
